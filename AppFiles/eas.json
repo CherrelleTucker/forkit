@@ -20,9 +20,6 @@
     "production": {
       "android": {
         "buildType": "app-bundle"
-      },
-      "env": {
-        "EXPO_PUBLIC_GOOGLE_PLACES_API_KEY": ""
       }
     }
   },

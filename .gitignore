@@ -1,0 +1,6 @@
+# Build artifacts
+build/
+
+# Large binary files
+*.aab
+*.apk
