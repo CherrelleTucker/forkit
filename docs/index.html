@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ForkIt - Fork Indecision</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #0B0B0F 0%, #17163B 50%, #0B0B0F 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 120px;
+            margin-bottom: 20px;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        h1 {
+            font-size: 64px;
+            font-weight: 900;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+
+        .tagline {
+            font-size: 20px;
+            color: rgba(255, 255, 255, 0.85);
+            margin-bottom: 40px;
+        }
+
+        .description {
+            font-size: 18px;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 40px;
+        }
+
+        .buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 40px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 15px 30px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: white;
+            color: #0B0B0F;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+
+        .features {
+            text-align: left;
+            margin: 40px 0;
+        }
+
+        .feature {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .feature-icon {
+            font-size: 24px;
+            margin-right: 15px;
+        }
+
+        .feature-text h3 {
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+
+        .feature-text p {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .footer {
+            margin-top: 60px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .footer a {
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            border-bottom: 1px dotted rgba(255, 255, 255, 0.5);
+        }
+
+        .footer a:hover {
+            color: white;
+            border-bottom-color: white;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 48px;
+            }
+
+            .logo {
+                font-size: 80px;
+            }
+
+            .tagline {
+                font-size: 16px;
+            }
+
+            .description {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🍴</div>
+        <h1>ForkIt</h1>
+        <p class="tagline">Fork indecision. Fork regret. Fork it all.</p>
+
+        <p class="description">
+            Can't decide where to eat? We'll pick for you. One tap, one choice, done. Plus copycat recipes if you'd rather stay home.
+        </p>
+
+        <div class="buttons">
+            <a href="#" class="btn btn-primary">
+                Download on Google Play (Coming Soon)
+            </a>
+            <a href="https://github.com/CherrelleTucker/forkit" class="btn btn-secondary" target="_blank">
+                View on GitHub
+            </a>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">🎲</div>
+                <div class="feature-text">
+                    <h3>True Random Selection</h3>
+                    <p>One button. One choice. No scrolling, no regrets.</p>
+                </div>
+            </div>
+
+            <div class="feature">
+                <div class="feature-icon">✨</div>
+                <div class="feature-text">
+                    <h3>Hidden Gems Mode</h3>
+                    <p>Discover local restaurants, skip the chains.</p>
+                </div>
+            </div>
+
+            <div class="feature">
+                <div class="feature-icon">🏡</div>
+                <div class="feature-text">
+                    <h3>Make at Home</h3>
+                    <p>Don't want to go out? Get copycat recipes instead.</p>
+                </div>
+            </div>
+
+            <div class="feature">
+                <div class="feature-icon">🎚️</div>
+                <div class="feature-text">
+                    <h3>Smart Filters</h3>
+                    <p>Distance, price, rating, cuisine. Guardrails, not browsing.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>
+                <a href="privacy.html">Privacy Policy</a> •
+                <a href="https://github.com/CherrelleTucker/forkit" target="_blank">GitHub</a> •
+                Made with ❤️ and hunger
+            </p>
+        </div>
+    </div>
+</body>
+</html>
