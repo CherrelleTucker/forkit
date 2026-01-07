@@ -18,7 +18,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.forkit.app",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "ForkIt needs your location to find nearby restaurants and help you decide where to eat.",
+        "NSLocationAlwaysUsageDescription": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
+      },
+      "config": {
+        "googleMapsApiKey": ""
+      }
     },
     "android": {
       "package": "com.forkit.app",

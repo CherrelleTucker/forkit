@@ -1,8 +1,12 @@
-# 🍴 ForkIt - Google Play Store Deployment Package
+# 🍴 ForkIt - App Store Deployment Package
 
 ## ✅ Your App is Ready for Deployment!
 
-All configuration, documentation, and security measures have been implemented according to Google Play Store best practices.
+All configuration, documentation, and security measures have been implemented according to app store best practices.
+
+**Current Status:**
+- ✅ **Android:** Live on Google Play Store (Internal Testing)
+- 🔄 **iOS:** Configured and ready to build (see iOS guides below)
 
 ---
 
@@ -174,6 +178,7 @@ Before building your AAB, verify:
 
 ## 📖 Documentation Quick Reference
 
+### Android (Google Play Store)
 | Need to... | Read This Document | Time |
 |------------|-------------------|------|
 | Get started deploying | `DEPLOYMENT_README.md` | Full guide |
@@ -182,6 +187,13 @@ Before building your AAB, verify:
 | Create screenshots/graphics | `PLAY_STORE_ASSETS_GUIDE.md` | 30 min |
 | Secure API key | `API_KEY_SECURITY.md` | 15 min |
 | Host privacy policy | `PRIVACY_POLICY.md` | Copy & host |
+
+### iOS (Apple App Store)
+| Need to... | Read This Document | Time |
+|------------|-------------------|------|
+| Quick start iOS deployment | `IOS_QUICK_START.md` | 5 min read |
+| Complete iOS deployment guide | `IOS_APP_STORE_DEPLOYMENT.md` | Full reference |
+| Understand iOS vs Android | `IOS_APP_STORE_DEPLOYMENT.md` | See comparison table |
 
 ---
 

@@ -9,17 +9,26 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "ios": {
+        "buildType": "app-store"
       }
     }
   },
@@ -29,6 +38,11 @@
         "serviceAccountKeyPath": "./google-play-service-account.json",
         "track": "internal",
         "releaseStatus": "draft"
+      },
+      "ios": {
+        "appleId": "YOUR_APPLE_ID_EMAIL@example.com",
+        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "YOUR_APPLE_TEAM_ID"
       }
     }
   }

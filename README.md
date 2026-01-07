@@ -52,18 +52,24 @@ ForkIt solves decision paralysis by making the choice for you.
 ## 🚀 Technology
 
 - **Framework:** React Native (Expo)
-- **Platform:** Android (iOS planned)
+- **Platform:** Android (live), iOS (configured, launching Q3-Q4 2026)
 - **Data:** Google Places API
 - **Build:** EAS Build
-- **Distribution:** Google Play Store
+- **Distribution:** Google Play Store, Apple App Store (coming soon)
 
 ---
 
 ## 📱 Download
 
-> Coming soon to Google Play Store!
+### Android
+> Currently in internal beta testing on Google Play Store
 
-Currently in internal testing. Want to be a beta tester? [Contact me](#contact).
+Want to be a beta tester? [Contact me](#contact) or check out [FACEBOOK_TESTER_POST.md](FACEBOOK_TESTER_POST.md) for more info.
+
+### iOS
+> Coming Q3-Q4 2026
+
+iOS app is configured and ready to build. See [IOS_QUICK_START.md](IOS_QUICK_START.md) for deployment timeline.
 
 ---
 
@@ -174,27 +180,35 @@ See [DEPLOYMENT_README.md](DEPLOYMENT_README.md) for full deployment guide.
 
 ## 🗺️ Roadmap
 
-### v1.0 (Current)
+See [ROADMAP.md](ROADMAP.md) for the complete product roadmap.
+
+### v1.0 (Current - Android Beta)
 - [x] Random restaurant selection
 - [x] Google Places API integration
 - [x] Hidden Gems mode
 - [x] Make at home with recipe links
 - [x] Smart filters
 - [x] Google Maps integration
+- [x] Android app on Google Play Store (Internal Testing)
 
-### v1.1 (Planned)
+### Phase 1: Post-Beta (Q1 2026)
 - [ ] Improve chain detection logic
 - [ ] "Avoid repeats" within session
 - [ ] Saved favorites
 - [ ] History view
-- [ ] User-added signature dishes
 
-### v2.0 (Future)
+### Phase 2: Enhanced Features (Q1-Q2 2026)
+- [ ] **Picky eater exclusion mode** (never show specific cuisines/ingredients)
 - [ ] Recipe import with ingredient parsing
 - [ ] Shopping list generation
 - [ ] Pantry tracking
-- [ ] iOS version
-- [ ] Lightweight personalization (no recommendations)
+
+### Phase 3: iOS Launch (Q3-Q4 2026)
+- [ ] **iOS App Store release**
+- [ ] TestFlight beta testing
+- [ ] iOS-specific UI polish
+- [ ] Meal planning
+- [ ] Budget-aware mode
 
 ---
 
@@ -221,7 +235,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - Signature dish detection is heuristic (manual database for major chains)
 - Chain detection uses keyword matching (not perfect)
-- No iOS version yet (Android only)
+- iOS version planned for Q3-Q4 2026 (see [ROADMAP.md](ROADMAP.md))
 
 ---
 
