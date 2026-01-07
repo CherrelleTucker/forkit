@@ -16,6 +16,7 @@ export default async function handler(req, res) {
     opennow,
     maxPrice,
     minRating,
+    excludedPlaceIds, // Array of place IDs to exclude (recently shown)
   } = req.body;
 
   // Validate required parameters
@@ -56,7 +57,8 @@ export default async function handler(req, res) {
   // Build request body for new Places API
   const requestBody = {
     includedTypes: ['restaurant'],
-    maxResultCount: 20, // Maximum results to return
+    maxResultCount: 20, // Maximum allowed by Places API (New) searchNearby
+    rankPreference: 'DISTANCE', // Prioritize closer restaurants
     locationRestriction: {
       circle: {
         center: {
@@ -135,6 +137,13 @@ export default async function handler(req, res) {
 
     // Apply client-side filters that can't be handled by the API
     let filteredResults = transformedData.results;
+
+    // Filter out recently shown places
+    if (excludedPlaceIds && Array.isArray(excludedPlaceIds) && excludedPlaceIds.length > 0) {
+      const excludedSet = new Set(excludedPlaceIds);
+      filteredResults = filteredResults.filter((r) => !excludedSet.has(r.place_id));
+      console.log(`Excluded ${excludedPlaceIds.length} recently shown places`);
+    }
 
     // Filter by open now if requested
     if (opennow) {

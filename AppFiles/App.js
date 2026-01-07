@@ -315,6 +315,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [poolCount, setPoolCount] = useState(0);
 
+  // Recently shown tracking (avoid repeats)
+  const [recentlyShown, setRecentlyShown] = useState([]);
+
   // Slot-style reveal state
   const [slotText, setSlotText] = useState("");
   const [picked, setPicked] = useState(null);
@@ -425,7 +428,7 @@ export default function App() {
       // Get integrity token for this request
       const integrityToken = await getIntegrityToken();
 
-      // Make request to backend
+      // Make request to backend, excluding recently shown restaurants
       const response = await fetch(`${BACKEND_URL}/api/places-nearby`, {
         method: 'POST',
         headers: {
@@ -440,6 +443,7 @@ export default function App() {
           opennow: openNow,
           maxPrice,
           minRating,
+          excludedPlaceIds: recentlyShown, // Exclude recently shown to increase variety
         }),
       });
 
@@ -495,6 +499,13 @@ export default function App() {
       setForkingLine("");
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast("Forking complete. Bon appétit! 🍴", "success", 1600);
+
+      // Track this restaurant to avoid showing it again soon
+      // Keep last 10 places to provide good variety
+      setRecentlyShown(prev => {
+        const updated = [chosen.place_id, ...prev];
+        return updated.slice(0, 10); // Keep only last 10
+      });
 
       // Scroll to top to show result
       setTimeout(() => {
@@ -563,7 +574,7 @@ export default function App() {
             {!!forkingLine && loading ? <Text style={styles.forkingLine}>{forkingLine}</Text> : null}
 
             <Text style={styles.hint}>
-              {poolCount ? `Last eligible pool: ${poolCount}` : "Tip: widen radius or lower rating if you get zero results."}
+              {poolCount ? `Last eligible pool: ${poolCount}${recentlyShown.length > 0 ? ` (${recentlyShown.length} excluded to avoid repeats)` : ''}` : "Tip: widen radius or lower rating if you get zero results."}
             </Text>
 
             {!!slotText && loading ? (
@@ -696,6 +707,23 @@ export default function App() {
                 onPress={() => setHiddenGems((v) => !v)}
               />
             </View>
+
+            {recentlyShown.length > 0 ? (
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>Recently shown: {recentlyShown.length}</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setRecentlyShown([]);
+                    showToast("History cleared! All restaurants available again.", "success", 1600);
+                  }}
+                  activeOpacity={0.85}
+                  style={styles.clearBtn}
+                >
+                  <Ionicons name="refresh" size={12} color="rgba(255,255,255,0.95)" style={{ marginRight: 6 }} />
+                  <Text style={styles.clearBtnText}>Clear History</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </GlassCard>
 
           <Text style={styles.footer}>
@@ -836,6 +864,18 @@ const styles = StyleSheet.create({
 
   toggleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10 },
   toggleLabel: { color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "900" },
+
+  clearBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.20)",
+  },
+  clearBtnText: { color: "rgba(255,255,255,0.90)", fontSize: 11, fontWeight: "900" },
 
   emptyState: { 
     alignItems: 'center', 
