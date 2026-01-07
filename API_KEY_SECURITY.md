@@ -307,7 +307,7 @@ res.json(data);
 
 ### .env (Local Development)
 ```bash
-EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=AIzaSyCmCBxQKEeX24RoVjOHSWqIW4wlFOVncAs
+EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=your_actual_api_key_here
 ```
 
 ### App.js (Updated)

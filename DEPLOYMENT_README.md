@@ -202,8 +202,8 @@ eas init
 Your API key is currently in `.env` for local development. For EAS Build, use EAS Secrets:
 
 ```bash
-# Set API key as EAS Secret
-eas secret:create --scope project --name EXPO_PUBLIC_GOOGLE_PLACES_API_KEY --value "AIzaSyCmCBxQKEeX24RoVjOHSWqIW4wlFOVncAs"
+# Set API key as EAS Secret (replace with your actual API key)
+eas secret:create --scope project --name EXPO_PUBLIC_GOOGLE_PLACES_API_KEY --value "YOUR_ACTUAL_API_KEY"
 
 # Verify secret was created
 eas secret:list
@@ -216,7 +216,7 @@ eas secret:list
     "buildType": "app-bundle"
   },
   "env": {
-    "EXPO_PUBLIC_GOOGLE_PLACES_API_KEY": "AIzaSyCmCBxQKEeX24RoVjOHSWqIW4wlFOVncAs"
+    "EXPO_PUBLIC_GOOGLE_PLACES_API_KEY": "YOUR_ACTUAL_API_KEY"
   }
 }
 ```

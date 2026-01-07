@@ -73,7 +73,7 @@ All configuration, documentation, and security measures have been implemented ac
 5. **Configure API Key Security** (15 minutes)
    ```bash
    # Create EAS Secret for production builds
-   eas secret:create --scope project --name EXPO_PUBLIC_GOOGLE_PLACES_API_KEY --value "AIzaSyCmCBxQKEeX24RoVjOHSWqIW4wlFOVncAs"
+   eas secret:create --scope project --name EXPO_PUBLIC_GOOGLE_PLACES_API_KEY --value "YOUR_ACTUAL_API_KEY"
 
    # Verify
    eas secret:list
