@@ -1,0 +1,16 @@
+{
+  "name": "forkit-backend",
+  "version": "1.0.0",
+  "description": "Backend proxy for ForkIt app - handles Google Places API and Play Integrity verification",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "devDependencies": {
+    "vercel": "^50.1.6"
+  },
+  "engines": {
+    "node": ">=18.x"
+  }
+}

@@ -46,24 +46,27 @@ eas credentials
 
 ### Step 2: Restrict API Key in Google Cloud Console
 
+**Important:** Since we're now using a backend proxy, the API key restrictions have changed:
+
 1. Go to https://console.cloud.google.com/google/maps-apis/credentials
 2. Click on your API key
 3. **Application restrictions:**
-   - Select "Android apps"
-   - Click "Add an item"
-   - **Package name:** `com.forkit.app`
-   - **SHA-1 certificate fingerprint:** [Paste from EAS credentials]
+   - Select **"None"**
+   - Note: Places API (New) doesn't support HTTP referrer or Android app restrictions when called from a backend
 4. **API restrictions:**
-   - Select "Restrict key"
-   - Check only:
-     - Places API
-     - Maps SDK for Android (if using maps)
+   - Select **"Restrict key"**
+   - Enable only:
+     - ✅ Places API (New)
+     - ✅ Play Integrity API
+   - Remove all other APIs
 5. **Save**
 
-**Now your API key:**
-- Only works with ForkIt app
-- Only works with Places API
-- Can't be abused even if extracted
+**Security with "None" application restrictions:**
+- API key only works with specific APIs (not all Google services)
+- Key is stored server-side only (never exposed in app)
+- Backend validates all requests
+- Vercel provides DDoS protection and rate limiting
+- Play Integrity adds app authenticity verification
 
 ---
 

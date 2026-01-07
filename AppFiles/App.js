@@ -24,18 +24,16 @@ import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
+import { getIntegrityToken, verifyIntegrityToken } from "./utils/integrity";
 
 // ==============================
 // CONFIG
 // ==============================
 
-// Google Places API key from environment variables
+// Backend API URL from environment variables
 // For local development, add to .env file
-// For EAS Build, use: eas secret:create --scope project --name EXPO_PUBLIC_GOOGLE_PLACES_API_KEY --value your_key
-const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
-
-const PLACES_NEARBY_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
-const PLACE_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json";
+// For EAS Build, use: eas secret:create --scope project --name EXPO_PUBLIC_BACKEND_URL --value your_url
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "http://localhost:3000";
 
 const FORKING_LINES = [
   "Forking the universe for answers…",
@@ -192,25 +190,27 @@ async function fetchJson(url) {
 }
 
 async function getPlaceDetails(placeId) {
-  const fields = [
-    "name",
-    "formatted_phone_number",
-    "website",
-    "url",
-    "geometry",
-    "rating",
-    "price_level",
-    "opening_hours",
-    "vicinity",
-  ].join(",");
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/places-details`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ placeId }),
+    });
 
-  const url = `${PLACE_DETAILS_URL}?place_id=${encodeURIComponent(placeId)}&fields=${encodeURIComponent(
-    fields
-  )}&key=${encodeURIComponent(GOOGLE_PLACES_API_KEY)}`;
+    if (!response.ok) {
+      console.error('Place details request failed:', response.status);
+      return null;
+    }
 
-  const data = await fetchJson(url);
-  if (data.status !== "OK") return null;
-  return data.result;
+    const data = await response.json();
+    if (data.status !== "OK") return null;
+    return data.result;
+  } catch (error) {
+    console.error('Error fetching place details:', error);
+    return null;
+  }
 }
 
 function sleep(ms) {
@@ -368,6 +368,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
+        // Request location permissions
         const { status } = await Location.requestForegroundPermissionsAsync();
         const ok = status === "granted";
         setHasLocationPerm(ok);
@@ -378,6 +379,15 @@ export default function App() {
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         setCoords(loc.coords);
         showToast("Forking initialized. Ready to spear. 🍴", "success", 1800);
+
+        // Perform Play Integrity check on app launch
+        const integrityToken = await getIntegrityToken();
+        if (integrityToken && BACKEND_URL) {
+          // Verify token with backend (silent - don't block user)
+          const verificationResult = await verifyIntegrityToken(integrityToken, BACKEND_URL);
+          console.log('Play Integrity verification result:', verificationResult);
+          // Don't block user based on result - just log for monitoring
+        }
       } catch (e) {
         Alert.alert("Location error", String(e?.message || e));
       }
@@ -386,8 +396,8 @@ export default function App() {
   }, []);
 
   async function forkIt() {
-    if (!GOOGLE_PLACES_API_KEY || GOOGLE_PLACES_API_KEY.includes("YOUR_API_KEY")) {
-      Alert.alert("Missing API Key", "Please configure your Google Places API key in the .env file.");
+    if (!BACKEND_URL) {
+      Alert.alert("Configuration Error", "Backend URL not configured. Please check your .env file.");
       return;
     }
     if (!hasLocationPerm || !coords) {
@@ -411,31 +421,45 @@ export default function App() {
       await Haptics.selectionAsync();
 
       const { latitude, longitude } = coords;
-      const params = new URLSearchParams({
-        key: GOOGLE_PLACES_API_KEY,
-        location: `${latitude},${longitude}`,
-        radius: String(radiusMeters),
-        type: "restaurant",
+
+      // Get integrity token for this request
+      const integrityToken = await getIntegrityToken();
+
+      // Make request to backend
+      const response = await fetch(`${BACKEND_URL}/api/places-nearby`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Integrity-Token': integrityToken || '',
+        },
+        body: JSON.stringify({
+          latitude,
+          longitude,
+          radius: radiusMeters,
+          keyword: cuisineKeyword.trim(),
+          opennow: openNow,
+          maxPrice,
+          minRating,
+        }),
       });
 
-      if (openNow) params.set("opennow", "true");
-      if (cuisineKeyword.trim()) params.set("keyword", cuisineKeyword.trim());
+      if (!response.ok) {
+        throw new Error(`Backend request failed: ${response.status}`);
+      }
 
-      const url = `${PLACES_NEARBY_URL}?${params.toString()}`;
-      const data = await fetchJson(url);
+      const data = await response.json();
 
       if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-        throw new Error(`Places error: ${data.status}${data.error_message ? ` — ${data.error_message}` : ""}`);
+        throw new Error(`Places error: ${data.status}${data.error ? ` — ${data.error}` : ""}`);
       }
 
       let results = Array.isArray(data.results) ? data.results : [];
 
-      // Apply filters client-side
+      // Additional client-side filter for hidden gems
+      // (Backend already handles opennow, maxPrice, minRating)
       results = results.filter((r) => {
-        const ratingOk = (r.rating ?? 0) >= minRating;
-        const priceOk = r.price_level == null ? true : r.price_level <= maxPrice; // allow unknowns
         const chainOk = hiddenGems ? !looksLikeChain(r.name) : true;
-        return ratingOk && priceOk && chainOk;
+        return chainOk;
       });
 
       setPoolCount(results.length);
