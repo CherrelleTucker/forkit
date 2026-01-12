@@ -112,27 +112,65 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Make request to Google Places API (New)
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': fieldMask,
-      },
-      body: JSON.stringify(requestBody),
-    });
+    // Make initial request to Google Places API (New)
+    let allPlaces = [];
+    let pageToken = null;
+    let pageCount = 0;
+    const maxPages = 3; // Get up to 60 results (3 pages x 20)
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Places API error:', response.status, errorText);
-      return res.status(response.status).json({
-        error: 'Places API request failed',
-        details: errorText,
+    do {
+      // Add pageToken to request if we have one (for pagination)
+      const paginatedRequestBody = pageToken
+        ? { ...requestBody, pageToken }
+        : requestBody;
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': fieldMask,
+        },
+        body: JSON.stringify(paginatedRequestBody),
       });
-    }
 
-    const data = await response.json();
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Places API error:', response.status, errorText);
+        // If we already have some results, continue with what we have
+        if (allPlaces.length > 0) {
+          console.log(`Pagination stopped at page ${pageCount + 1}, using ${allPlaces.length} results`);
+          break;
+        }
+        return res.status(response.status).json({
+          error: 'Places API request failed',
+          details: errorText,
+        });
+      }
+
+      const pageData = await response.json();
+
+      // Add places from this page
+      if (pageData.places && pageData.places.length > 0) {
+        allPlaces = allPlaces.concat(pageData.places);
+      }
+
+      // Check for next page
+      pageToken = pageData.nextPageToken || null;
+      pageCount++;
+
+      console.log(`Page ${pageCount}: Got ${pageData.places?.length || 0} places, total: ${allPlaces.length}`);
+
+      // Small delay between pagination requests (Google recommends this)
+      if (pageToken && pageCount < maxPages) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+    } while (pageToken && pageCount < maxPages);
+
+    console.log(`Total places fetched: ${allPlaces.length} from ${pageCount} page(s)`);
+
+    const data = { places: allPlaces };
 
     // Transform new API response to match old API format for client compatibility
     const transformedData = {
