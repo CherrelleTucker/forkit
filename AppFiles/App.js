@@ -83,6 +83,17 @@ const FAIL_LINES = [
   "Zero prongs landed. Try again.",
 ];
 
+const PICKY_EATER_OPTIONS = [
+  { id: "beef", emoji: "🐄", label: "Beef", keywords: "burger" },
+  { id: "chicken", emoji: "🐔", label: "Chicken", keywords: "chicken" },
+  { id: "pork", emoji: "🐷", label: "Pork", keywords: "BBQ" },
+  { id: "fish", emoji: "🐟", label: "Fish", keywords: "seafood" },
+  { id: "veggie", emoji: "🌱", label: "Veggie", keywords: "vegetarian" },
+  { id: "glutenfree", emoji: "🌾", label: "No Gluten", keywords: "gluten free" },
+  { id: "pizza", emoji: "🍕", label: "Pizza", keywords: "pizza" },
+  { id: "pasta", emoji: "🍝", label: "Pasta", keywords: "italian" },
+];
+
 const CHAIN_KEYWORDS = [
   "mcdonald",
   "burger king",
@@ -294,6 +305,124 @@ function Toast({ text, kind }) {
   );
 }
 
+function PickyEaterWheel({ selectedOption, onSelectOption }) {
+  const WHEEL_SIZE = 280;
+  const CENTER_SIZE = 70;
+
+  return (
+    <View style={pickyStyles.wheelContainer}>
+      {/* Static wheel - tap to select */}
+      <View
+        style={[
+          pickyStyles.wheel,
+          {
+            width: WHEEL_SIZE,
+            height: WHEEL_SIZE,
+          },
+        ]}
+      >
+        {PICKY_EATER_OPTIONS.map((option, index) => {
+          const angle = (index * 360) / 8 - 90; // Start from top
+          const radians = (angle * Math.PI) / 180;
+          const radius = WHEEL_SIZE / 2 - 50;
+          const x = Math.cos(radians) * radius;
+          const y = Math.sin(radians) * radius;
+          const isSelected = selectedOption?.id === option.id;
+
+          return (
+            <TouchableOpacity
+              key={option.id}
+              onPress={() => onSelectOption(option)}
+              activeOpacity={0.7}
+              style={[
+                pickyStyles.wheelOption,
+                {
+                  transform: [
+                    { translateX: x },
+                    { translateY: y },
+                  ],
+                },
+                isSelected && pickyStyles.wheelOptionSelected,
+              ]}
+            >
+              <Text style={[pickyStyles.wheelEmoji, isSelected && pickyStyles.wheelEmojiSelected]}>{option.emoji}</Text>
+              <Text style={[pickyStyles.wheelLabel, isSelected && pickyStyles.wheelLabelSelected]}>{option.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+
+        {/* Center label */}
+        <View style={[pickyStyles.centerLabel, { width: CENTER_SIZE, height: CENTER_SIZE }]}>
+          <Text style={pickyStyles.centerLabelText}>TAP TO</Text>
+          <Text style={pickyStyles.centerLabelText}>PICK</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const pickyStyles = StyleSheet.create({
+  wheelContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 20,
+    position: 'relative',
+  },
+  wheel: {
+    borderRadius: 999,
+    borderWidth: 4,
+    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  wheelOption: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
+    padding: 8,
+    borderRadius: 12,
+  },
+  wheelOptionSelected: {
+    backgroundColor: 'rgba(255,107,107,0.3)',
+    borderWidth: 2,
+    borderColor: '#FF6B6B',
+  },
+  wheelEmoji: {
+    fontSize: 28,
+  },
+  wheelEmojiSelected: {
+    fontSize: 32,
+  },
+  wheelLabel: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 9,
+    fontWeight: '800',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  wheelLabelSelected: {
+    color: 'white',
+    fontWeight: '900',
+  },
+  centerLabel: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  centerLabelText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+});
+
 // ==============================
 // APP
 // ==============================
@@ -327,6 +456,11 @@ export default function App() {
   const [statusLine, setStatusLine] = useState("Can't decide? Fork it. Let the algorithm choose.");
   const [forkingLine, setForkingLine] = useState("");
   const [toast, setToast] = useState({ text: "", kind: "info" });
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+
+  // Picky Eater Mode
+  const [pickyEaterMode, setPickyEaterMode] = useState(false);
+  const [selectedPickyOption, setSelectedPickyOption] = useState(null);
 
   // Animations
   const spin = useRef(new Animated.Value(0)).current;
@@ -366,6 +500,14 @@ export default function App() {
     setTimeout(() => setToast({ text: "", kind: "info" }), ms);
   }
 
+  // Picky Eater selection handler
+  function handlePickySelect(option) {
+    setSelectedPickyOption(option);
+    setCuisineKeyword(option.keywords.split(",")[0].trim());
+    Haptics.selectionAsync();
+    showToast(`${option.emoji} ${option.label} selected!`, "success", 1200);
+  }
+
   const radiusMeters = useMemo(() => Math.round(clamp(radiusMiles, 1, 15) * 1609.34), [radiusMiles]);
 
   useEffect(() => {
@@ -403,10 +545,27 @@ export default function App() {
       Alert.alert("Configuration Error", "Backend URL not configured. Please check your .env file.");
       return;
     }
-    if (!hasLocationPerm || !coords) {
-      Alert.alert("Location needed", "Enable location permissions to use ForkIt.");
-      return;
+
+    // Re-request location if we don't have it
+    let currentCoords = coords;
+    if (!hasLocationPerm || !currentCoords) {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Location needed", "Please enable location permissions in your phone's Settings to use ForkIt.");
+          return;
+        }
+        setHasLocationPerm(true);
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        currentCoords = loc.coords;
+        setCoords(currentCoords);
+        showToast("Location acquired! Forking now...", "success", 1200);
+      } catch (e) {
+        Alert.alert("Location error", "Could not get your location. Please check that location services are enabled.");
+        return;
+      }
     }
+
     if (loading) return;
 
     setLoading(true);
@@ -423,12 +582,21 @@ export default function App() {
       animateForking();
       await Haptics.selectionAsync();
 
-      const { latitude, longitude } = coords;
+      // Defensive check for valid coordinates
+      if (!currentCoords || typeof currentCoords.latitude !== 'number' || typeof currentCoords.longitude !== 'number') {
+        Alert.alert("Location error", "Could not get valid coordinates. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      const { latitude, longitude } = currentCoords;
 
       // Get integrity token for this request
       const integrityToken = await getIntegrityToken();
 
       // Make request to backend, excluding recently shown restaurants
+      console.log('ForkIt request:', { keyword: cuisineKeyword, radius: radiusMeters, minRating, maxPrice, openNow, hiddenGems, pickyEaterMode });
+
       const response = await fetch(`${BACKEND_URL}/api/places-nearby`, {
         method: 'POST',
         headers: {
@@ -495,6 +663,7 @@ export default function App() {
 
       setPicked(chosen);
       setSlotText("");
+      setFiltersExpanded(false);
       setStatusLine(pickRandom(SUCCESS_LINES));
       setForkingLine("");
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -523,10 +692,6 @@ export default function App() {
     }
   }
 
-  function reroll() {
-    forkIt();
-  }
-
   const placeName = pickedDetails?.name || picked?.name;
   const signatureDish = placeName ? getSignatureDish(placeName) : null;
   const recipeLinks = useMemo(() => {
@@ -551,7 +716,7 @@ export default function App() {
               <Ionicons name="nutrition" size={22} color="#0B0B0F" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>ForkIt</Text>
+              <Text style={styles.title}>ForkIt!</Text>
               <Text style={styles.subtitle}>Fork indecision. Fork regret. Fork it all.</Text>
             </View>
           </View>
@@ -563,7 +728,7 @@ export default function App() {
             </Text>
 
             <PrimaryButton
-              label={loading ? "Forking Hard…" : "Fork It Now"}
+              label={loading ? "Forking Hard…" : "ForkIt! Now"}
               onPress={forkIt}
               disabled={loading}
               loading={loading}
@@ -578,13 +743,160 @@ export default function App() {
             </Text>
 
             {!!slotText && loading ? (
-              <View style={styles.slotBox}>
+
+<View style={styles.slotBox}>
                 <Text style={styles.slotLabel}>Forking preview</Text>
                 <Text style={styles.slotText} numberOfLines={1}>
                   {slotText}
                 </Text>
               </View>
             ) : null}
+
+            {/* Picky Eater Mode Toggle */}
+            <TouchableOpacity
+              onPress={() => {
+                const newMode = !pickyEaterMode;
+                setPickyEaterMode(newMode);
+                if (newMode) {
+                  // Turning ON picky eater mode
+                  setFiltersExpanded(false);
+                  setCuisineKeyword("");
+                  setSelectedPickyOption(null);
+                  setHiddenGems(false); // Chains are OK for picky eaters
+                }
+              }}
+              activeOpacity={0.85}
+              style={[styles.filtersToggle, pickyEaterMode && styles.pickyEaterToggleActive]}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text style={{ fontSize: 18, marginRight: 8 }}>🎯</Text>
+                <Text style={styles.filtersToggleText}>Picky Eater Mode</Text>
+              </View>
+              <View style={[styles.modeIndicator, pickyEaterMode && styles.modeIndicatorActive]}>
+                <Text style={styles.modeIndicatorText}>{pickyEaterMode ? "ON" : "OFF"}</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Picky Eater Wheel */}
+            {pickyEaterMode && (
+              <View style={styles.pickyEaterSection}>
+                <Text style={styles.pickyEaterTitle}>What can you eat today?</Text>
+                <PickyEaterWheel
+                  selectedOption={selectedPickyOption}
+                  onSelectOption={handlePickySelect}
+                />
+                {selectedPickyOption && (
+                  <Text style={styles.pickyEaterHint}>
+                    {selectedPickyOption.emoji} {selectedPickyOption.label} selected! Now tap ForkIt!
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {/* Collapsible Filters */}
+            <TouchableOpacity
+              onPress={() => setFiltersExpanded(!filtersExpanded)}
+              activeOpacity={0.85}
+              style={styles.filtersToggle}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Ionicons name="options" size={16} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.filtersToggleText}>Filters</Text>
+              </View>
+              <Ionicons
+                name={filtersExpanded ? "chevron-up" : "chevron-down"}
+                size={18}
+                color="rgba(255,255,255,0.7)"
+              />
+            </TouchableOpacity>
+
+            {filtersExpanded && (
+              <View style={styles.filtersContent}>
+                <Text style={styles.label}>Radius</Text>
+                <View style={styles.row}>
+                  {[1, 3, 5, 10, 15].map((m) => (
+                    <Chip key={m} label={`${m} mi`} icon="navigate" active={radiusMiles === m} onPress={() => setRadiusMiles(m)} />
+                  ))}
+                </View>
+
+                <Text style={styles.label}>Max price</Text>
+                <View style={styles.row}>
+                  {[
+                    { v: 1, t: "$" },
+                    { v: 2, t: "$$" },
+                    { v: 3, t: "$$$" },
+                    { v: 4, t: "$$$$" },
+                  ].map((p) => (
+                    <Chip key={p.v} label={p.t} icon="pricetag" active={maxPrice === p.v} onPress={() => setMaxPrice(p.v)} />
+                  ))}
+                </View>
+
+                <Text style={styles.label}>Minimum rating</Text>
+                <View style={styles.row}>
+                  {[3.5, 4.0, 4.3, 4.5].map((r) => (
+                    <Chip key={r} label={`${r}+`} icon="star" active={minRating === r} onPress={() => setMinRating(r)} />
+                  ))}
+                </View>
+
+                {!pickyEaterMode && (
+                  <>
+                    <Text style={styles.label}>Cuisine keyword (optional)</Text>
+                    <View style={styles.inputWrap}>
+                      <Ionicons name="search" size={16} color="rgba(255,255,255,0.7)" />
+                      <TextInput
+                        value={cuisineKeyword}
+                        onChangeText={setCuisineKeyword}
+                        placeholder="ramen, tacos, thai…"
+                        placeholderTextColor="rgba(255,255,255,0.45)"
+                        style={styles.input}
+                      />
+                    </View>
+                  </>
+                )}
+
+                {pickyEaterMode && selectedPickyOption && (
+                  <View style={styles.pickyEaterActiveFilter}>
+                    <Text style={styles.label}>Active filter from wheel:</Text>
+                    <View style={styles.activeFilterPill}>
+                      <Text style={styles.activeFilterEmoji}>{selectedPickyOption.emoji}</Text>
+                      <Text style={styles.activeFilterText}>{selectedPickyOption.label}</Text>
+                    </View>
+                  </View>
+                )}
+
+                <View style={styles.toggleRow}>
+                  <Text style={styles.toggleLabel}>Open now</Text>
+                  <Chip label={openNow ? "ON" : "OFF"} icon="time" active={openNow} onPress={() => setOpenNow((v) => !v)} />
+                </View>
+
+                <View style={styles.toggleRow}>
+                  <Text style={styles.toggleLabel}>Hidden Gems</Text>
+                  <Chip
+                    label={hiddenGems ? "LOCAL" : "ANY"}
+                    icon="sparkles"
+                    active={hiddenGems}
+                    onPress={() => setHiddenGems((v) => !v)}
+                  />
+                </View>
+
+                {recentlyShown.length > 0 && (
+                  <View style={styles.toggleRow}>
+                    <Text style={styles.toggleLabel}>Recently shown: {recentlyShown.length}</Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setRecentlyShown([]);
+                        showToast("History cleared! All restaurants available again.", "success", 1600);
+                      }}
+                      activeOpacity={0.85}
+                      style={styles.clearBtn}
+                    >
+                      <Ionicons name="refresh" size={12} color="rgba(255,255,255,0.95)" style={{ marginRight: 6 }} />
+                      <Text style={styles.clearBtnText}>Clear History</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
 
           {/* Result - Moved to top */}
@@ -611,7 +923,6 @@ export default function App() {
                 </View>
 
                 <View style={styles.actionRow}>
-                  <GhostButton label="Re-Fork" icon="refresh" onPress={reroll} />
                   <GhostButton label="Maps" icon="map" onPress={() => openMapsSearchByText(placeName)} />
                   <GhostButton
                     label="Call"
@@ -653,79 +964,6 @@ export default function App() {
             </GlassCard>
           ) : null}
 
-          {/* Filters */}
-          <GlassCard title="Filters" icon="options">
-            <Text style={styles.label}>Radius</Text>
-            <View style={styles.row}>
-              {[1, 3, 5, 10, 15].map((m) => (
-                <Chip key={m} label={`${m} mi`} icon="navigate" active={radiusMiles === m} onPress={() => setRadiusMiles(m)} />
-              ))}
-            </View>
-
-            <Text style={styles.label}>Max price</Text>
-            <View style={styles.row}>
-              {[
-                { v: 1, t: "$" },
-                { v: 2, t: "$$" },
-                { v: 3, t: "$$$" },
-                { v: 4, t: "$$$$" },
-              ].map((p) => (
-                <Chip key={p.v} label={p.t} icon="pricetag" active={maxPrice === p.v} onPress={() => setMaxPrice(p.v)} />
-              ))}
-            </View>
-
-            <Text style={styles.label}>Minimum rating</Text>
-            <View style={styles.row}>
-              {[3.5, 4.0, 4.3, 4.5].map((r) => (
-                <Chip key={r} label={`${r}+`} icon="star" active={minRating === r} onPress={() => setMinRating(r)} />
-              ))}
-            </View>
-
-            <Text style={styles.label}>Cuisine keyword (optional)</Text>
-            <View style={styles.inputWrap}>
-              <Ionicons name="search" size={16} color="rgba(255,255,255,0.7)" />
-              <TextInput
-                value={cuisineKeyword}
-                onChangeText={setCuisineKeyword}
-                placeholder="ramen, tacos, thai…"
-                placeholderTextColor="rgba(255,255,255,0.45)"
-                style={styles.input}
-              />
-            </View>
-
-            <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>Open now</Text>
-              <Chip label={openNow ? "ON" : "OFF"} icon="time" active={openNow} onPress={() => setOpenNow((v) => !v)} />
-            </View>
-
-            <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>Hidden Gems</Text>
-              <Chip
-                label={hiddenGems ? "LOCAL" : "ANY"}
-                icon="sparkles"
-                active={hiddenGems}
-                onPress={() => setHiddenGems((v) => !v)}
-              />
-            </View>
-
-            {recentlyShown.length > 0 ? (
-              <View style={styles.toggleRow}>
-                <Text style={styles.toggleLabel}>Recently shown: {recentlyShown.length}</Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    setRecentlyShown([]);
-                    showToast("History cleared! All restaurants available again.", "success", 1600);
-                  }}
-                  activeOpacity={0.85}
-                  style={styles.clearBtn}
-                >
-                  <Ionicons name="refresh" size={12} color="rgba(255,255,255,0.95)" style={{ marginRight: 6 }} />
-                  <Text style={styles.clearBtnText}>Clear History</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </GlassCard>
-
           <Text style={styles.footer}>
             🍴 Fork responsibly. Tines may vary. Signature dishes detected via fork heuristics (v1).
           </Text>
@@ -740,9 +978,9 @@ export default function App() {
 // ==============================
 
 const styles = StyleSheet.create({
-  container: { padding: 16, paddingBottom: 48 },
+  container: { padding: 16, paddingTop: 40, paddingBottom: 48 },
 
-  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14, marginTop: 24 },
   logoBubble: {
     width: 42,
     height: 42,
@@ -759,7 +997,7 @@ const styles = StyleSheet.create({
   title: { color: "white", fontSize: 34, fontWeight: "900", letterSpacing: 0.2, lineHeight: 34 },
   subtitle: { color: "rgba(255,255,255,0.75)", fontSize: 13, marginTop: 4 },
 
-  toastWrap: { position: "absolute", top: 10, left: 0, right: 0, zIndex: 999, alignItems: "center" },
+  toastWrap: { position: "absolute", top: 50, left: 0, right: 0, zIndex: 999, alignItems: "center" },
   toast: {
     flexDirection: "row",
     alignItems: "center",
@@ -801,6 +1039,31 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   hint: { marginTop: 10, color: "rgba(255,255,255,0.55)", fontSize: 12 },
+
+  filtersToggle: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  filtersToggleText: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 14,
+    fontWeight: "900",
+    marginLeft: 8,
+  },
+  filtersContent: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.10)",
+  },
 
   slotBox: {
     marginTop: 12,
@@ -936,4 +1199,65 @@ const styles = StyleSheet.create({
   linkText: { color: "rgba(255,255,255,0.92)", fontWeight: "950", marginLeft: 10 },
 
   footer: { marginTop: 4, textAlign: "center", color: "rgba(255,255,255,0.5)", fontSize: 12, lineHeight: 16 },
+
+  // Picky Eater Mode styles
+  pickyEaterToggleActive: {
+    borderColor: "rgba(255,107,107,0.5)",
+    backgroundColor: "rgba(255,107,107,0.15)",
+  },
+  modeIndicator: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  modeIndicatorActive: {
+    backgroundColor: "rgba(255,107,107,0.8)",
+  },
+  modeIndicatorText: {
+    color: "white",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  pickyEaterSection: {
+    marginTop: 16,
+    alignItems: "center",
+  },
+  pickyEaterTitle: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  pickyEaterHint: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 8,
+    textAlign: "center",
+  },
+  pickyEaterActiveFilter: {
+    marginTop: 10,
+  },
+  activeFilterPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,107,107,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,107,107,0.4)",
+    alignSelf: "flex-start",
+  },
+  activeFilterEmoji: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  activeFilterText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "800",
+  },
 });
