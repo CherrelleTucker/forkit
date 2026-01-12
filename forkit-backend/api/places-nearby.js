@@ -70,105 +70,137 @@ export default async function handler(req, res) {
 
   // Determine which API to use based on whether keyword is provided
   const hasKeyword = keyword && keyword.trim().length > 0;
-  let apiUrl;
-  let requestBody;
-
-  if (hasKeyword) {
-    // Use Text Search API for keyword searches (much better results)
-    apiUrl = 'https://places.googleapis.com/v1/places:searchText';
-    requestBody = {
-      textQuery: `${keyword.trim()} restaurant`,
-      includedType: 'restaurant',
-      maxResultCount: 20,
-      locationBias: {
-        circle: {
-          center: {
-            latitude: parseFloat(latitude),
-            longitude: parseFloat(longitude),
-          },
-          radius: parseFloat(radius),
-        },
-      },
-    };
-    console.log(`Using Text Search API for keyword: "${keyword.trim()}"`);
-  } else {
-    // Use Nearby Search for random restaurant discovery
-    apiUrl = 'https://places.googleapis.com/v1/places:searchNearby';
-    requestBody = {
-      includedTypes: ['restaurant'],
-      maxResultCount: 20,
-      rankPreference: 'DISTANCE',
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: parseFloat(latitude),
-            longitude: parseFloat(longitude),
-          },
-          radius: parseFloat(radius),
-        },
-      },
-    };
-    console.log('Using Nearby Search API (no keyword)');
-  }
+  let allPlaces = [];
 
   try {
-    // Make initial request to Google Places API (New)
-    let allPlaces = [];
-    let pageToken = null;
-    let pageCount = 0;
-    const maxPages = 3; // Get up to 60 results (3 pages x 20)
-
-    do {
-      // Add pageToken to request if we have one (for pagination)
-      const paginatedRequestBody = pageToken
-        ? { ...requestBody, pageToken }
-        : requestBody;
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': fieldMask,
+    if (hasKeyword) {
+      // Use Text Search API for keyword searches (with pagination)
+      const apiUrl = 'https://places.googleapis.com/v1/places:searchText';
+      const requestBody = {
+        textQuery: `${keyword.trim()} restaurant`,
+        includedType: 'restaurant',
+        maxResultCount: 20,
+        locationBias: {
+          circle: {
+            center: {
+              latitude: parseFloat(latitude),
+              longitude: parseFloat(longitude),
+            },
+            radius: parseFloat(radius),
+          },
         },
-        body: JSON.stringify(paginatedRequestBody),
-      });
+      };
+      console.log(`Using Text Search API for keyword: "${keyword.trim()}"`);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Places API error:', response.status, errorText);
-        // If we already have some results, continue with what we have
-        if (allPlaces.length > 0) {
-          console.log(`Pagination stopped at page ${pageCount + 1}, using ${allPlaces.length} results`);
-          break;
-        }
-        return res.status(response.status).json({
-          error: 'Places API request failed',
-          details: errorText,
+      // Paginate through results
+      let pageToken = null;
+      let pageCount = 0;
+      const maxPages = 3;
+
+      do {
+        const paginatedRequestBody = pageToken
+          ? { ...requestBody, pageToken }
+          : requestBody;
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': fieldMask,
+          },
+          body: JSON.stringify(paginatedRequestBody),
         });
+
+        if (!response.ok) {
+          if (allPlaces.length > 0) break;
+          const errorText = await response.text();
+          console.error('Places API error:', response.status, errorText);
+          return res.status(response.status).json({ error: 'Places API request failed', details: errorText });
+        }
+
+        const pageData = await response.json();
+        if (pageData.places?.length > 0) {
+          allPlaces = allPlaces.concat(pageData.places);
+        }
+        pageToken = pageData.nextPageToken || null;
+        pageCount++;
+        console.log(`Text Search page ${pageCount}: ${pageData.places?.length || 0} places, total: ${allPlaces.length}`);
+
+        if (pageToken && pageCount < maxPages) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      } while (pageToken && pageCount < maxPages);
+
+    } else {
+      // Use Nearby Search - make 2 parallel requests with different rankings for more variety
+      // (Nearby Search doesn't support pagination)
+      const apiUrl = 'https://places.googleapis.com/v1/places:searchNearby';
+      const baseRequest = {
+        includedTypes: ['restaurant'],
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: {
+            center: {
+              latitude: parseFloat(latitude),
+              longitude: parseFloat(longitude),
+            },
+            radius: parseFloat(radius),
+          },
+        },
+      };
+
+      console.log('Using Nearby Search API with dual ranking strategy');
+
+      // Make two parallel requests with different rank preferences
+      const [distanceResponse, popularityResponse] = await Promise.all([
+        fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': fieldMask,
+          },
+          body: JSON.stringify({ ...baseRequest, rankPreference: 'DISTANCE' }),
+        }),
+        fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': fieldMask,
+          },
+          body: JSON.stringify({ ...baseRequest, rankPreference: 'POPULARITY' }),
+        }),
+      ]);
+
+      // Process distance results
+      if (distanceResponse.ok) {
+        const distanceData = await distanceResponse.json();
+        if (distanceData.places?.length > 0) {
+          allPlaces = allPlaces.concat(distanceData.places);
+          console.log(`Distance ranking: ${distanceData.places.length} places`);
+        }
       }
 
-      const pageData = await response.json();
-
-      // Add places from this page
-      if (pageData.places && pageData.places.length > 0) {
-        allPlaces = allPlaces.concat(pageData.places);
+      // Process popularity results
+      if (popularityResponse.ok) {
+        const popularityData = await popularityResponse.json();
+        if (popularityData.places?.length > 0) {
+          // Add only places not already in the list (deduplicate by ID)
+          const existingIds = new Set(allPlaces.map(p => p.id));
+          const newPlaces = popularityData.places.filter(p => !existingIds.has(p.id));
+          allPlaces = allPlaces.concat(newPlaces);
+          console.log(`Popularity ranking: ${popularityData.places.length} places (${newPlaces.length} new)`);
+        }
       }
 
-      // Check for next page
-      pageToken = pageData.nextPageToken || null;
-      pageCount++;
-
-      console.log(`Page ${pageCount}: Got ${pageData.places?.length || 0} places, total: ${allPlaces.length}`);
-
-      // Small delay between pagination requests (Google recommends this)
-      if (pageToken && pageCount < maxPages) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+      if (allPlaces.length === 0) {
+        return res.status(500).json({ error: 'No results from Places API' });
       }
+    }
 
-    } while (pageToken && pageCount < maxPages);
-
-    console.log(`Total places fetched: ${allPlaces.length} from ${pageCount} page(s)`);
+    console.log(`Total unique places fetched: ${allPlaces.length}`);
 
     const data = { places: allPlaces };
 
