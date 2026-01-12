@@ -133,27 +133,23 @@ export default async function handler(req, res) {
       } while (pageToken && pageCount < maxPages);
 
     } else {
-      // Use Nearby Search - make 2 parallel requests with different rankings for more variety
-      // (Nearby Search doesn't support pagination)
+      // Use Nearby Search - make multiple parallel requests for more variety
+      // (Nearby Search doesn't support pagination, max 20 per request)
       const apiUrl = 'https://places.googleapis.com/v1/places:searchNearby';
-      const baseRequest = {
-        includedTypes: ['restaurant'],
-        maxResultCount: 20,
-        locationRestriction: {
-          circle: {
-            center: {
-              latitude: parseFloat(latitude),
-              longitude: parseFloat(longitude),
-            },
-            radius: parseFloat(radius),
+      const locationRestriction = {
+        circle: {
+          center: {
+            latitude: parseFloat(latitude),
+            longitude: parseFloat(longitude),
           },
+          radius: parseFloat(radius),
         },
       };
 
-      console.log('Using Nearby Search API with dual ranking strategy');
+      console.log('Using Nearby Search API with multi-query strategy');
 
-      // Make two parallel requests with different rank preferences
-      const [distanceResponse, popularityResponse] = await Promise.all([
+      // Helper to make a search request
+      const makeRequest = (types, rankPreference) =>
         fetch(apiUrl, {
           method: 'POST',
           headers: {
@@ -161,37 +157,34 @@ export default async function handler(req, res) {
             'X-Goog-Api-Key': apiKey,
             'X-Goog-FieldMask': fieldMask,
           },
-          body: JSON.stringify({ ...baseRequest, rankPreference: 'DISTANCE' }),
-        }),
-        fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Goog-Api-Key': apiKey,
-            'X-Goog-FieldMask': fieldMask,
-          },
-          body: JSON.stringify({ ...baseRequest, rankPreference: 'POPULARITY' }),
-        }),
+          body: JSON.stringify({
+            includedTypes: types,
+            maxResultCount: 20,
+            locationRestriction,
+            rankPreference,
+          }),
+        });
+
+      // Make 4 parallel requests with different types and rankings for maximum variety
+      const responses = await Promise.all([
+        makeRequest(['restaurant'], 'DISTANCE'),
+        makeRequest(['restaurant'], 'POPULARITY'),
+        makeRequest(['american_restaurant', 'italian_restaurant', 'mexican_restaurant'], 'POPULARITY'),
+        makeRequest(['fast_food_restaurant', 'pizza_restaurant', 'hamburger_restaurant'], 'POPULARITY'),
       ]);
 
-      // Process distance results
-      if (distanceResponse.ok) {
-        const distanceData = await distanceResponse.json();
-        if (distanceData.places?.length > 0) {
-          allPlaces = allPlaces.concat(distanceData.places);
-          console.log(`Distance ranking: ${distanceData.places.length} places`);
-        }
-      }
+      const labels = ['restaurant/distance', 'restaurant/popularity', 'cuisine types', 'fast food types'];
 
-      // Process popularity results
-      if (popularityResponse.ok) {
-        const popularityData = await popularityResponse.json();
-        if (popularityData.places?.length > 0) {
-          // Add only places not already in the list (deduplicate by ID)
-          const existingIds = new Set(allPlaces.map(p => p.id));
-          const newPlaces = popularityData.places.filter(p => !existingIds.has(p.id));
-          allPlaces = allPlaces.concat(newPlaces);
-          console.log(`Popularity ranking: ${popularityData.places.length} places (${newPlaces.length} new)`);
+      // Process all responses and deduplicate
+      for (let i = 0; i < responses.length; i++) {
+        if (responses[i].ok) {
+          const data = await responses[i].json();
+          if (data.places?.length > 0) {
+            const existingIds = new Set(allPlaces.map(p => p.id));
+            const newPlaces = data.places.filter(p => !existingIds.has(p.id));
+            allPlaces = allPlaces.concat(newPlaces);
+            console.log(`${labels[i]}: ${data.places.length} places (${newPlaces.length} new)`);
+          }
         }
       }
 
