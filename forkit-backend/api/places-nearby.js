@@ -54,26 +54,6 @@ export default async function handler(req, res) {
     console.log('Received integrity token for nearby search');
   }
 
-  // Build request body for new Places API
-  const requestBody = {
-    includedTypes: ['restaurant'],
-    maxResultCount: 20, // Maximum allowed by Places API (New) searchNearby
-    rankPreference: 'DISTANCE', // Prioritize closer restaurants
-    locationRestriction: {
-      circle: {
-        center: {
-          latitude: parseFloat(latitude),
-          longitude: parseFloat(longitude),
-        },
-        radius: parseFloat(radius),
-      },
-    },
-  };
-
-  // Note: The new Places API searchNearby doesn't support keyword filtering
-  // Keyword filtering will be done client-side on the results
-  // For keyword search, would need to use Text Search API instead
-
   // Build field mask for response
   const fieldMask = [
     'places.id',
@@ -88,9 +68,52 @@ export default async function handler(req, res) {
     'places.currentOpeningHours',
   ].join(',');
 
+  // Determine which API to use based on whether keyword is provided
+  const hasKeyword = keyword && keyword.trim().length > 0;
+  let apiUrl;
+  let requestBody;
+
+  if (hasKeyword) {
+    // Use Text Search API for keyword searches (much better results)
+    apiUrl = 'https://places.googleapis.com/v1/places:searchText';
+    requestBody = {
+      textQuery: `${keyword.trim()} restaurant`,
+      includedType: 'restaurant',
+      maxResultCount: 20,
+      locationBias: {
+        circle: {
+          center: {
+            latitude: parseFloat(latitude),
+            longitude: parseFloat(longitude),
+          },
+          radius: parseFloat(radius),
+        },
+      },
+    };
+    console.log(`Using Text Search API for keyword: "${keyword.trim()}"`);
+  } else {
+    // Use Nearby Search for random restaurant discovery
+    apiUrl = 'https://places.googleapis.com/v1/places:searchNearby';
+    requestBody = {
+      includedTypes: ['restaurant'],
+      maxResultCount: 20,
+      rankPreference: 'DISTANCE',
+      locationRestriction: {
+        circle: {
+          center: {
+            latitude: parseFloat(latitude),
+            longitude: parseFloat(longitude),
+          },
+          radius: parseFloat(radius),
+        },
+      },
+    };
+    console.log('Using Nearby Search API (no keyword)');
+  }
+
   try {
     // Make request to Google Places API (New)
-    const response = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -166,16 +189,8 @@ export default async function handler(req, res) {
       );
     }
 
-    // Filter by keyword if specified (search in name and types)
-    if (keyword && keyword.trim()) {
-      const keywordLower = keyword.trim().toLowerCase();
-      filteredResults = filteredResults.filter((r) => {
-        const nameMatch = r.name.toLowerCase().includes(keywordLower);
-        const typeMatch = r.types.some(t => t.toLowerCase().includes(keywordLower));
-        const vicinityMatch = r.vicinity.toLowerCase().includes(keywordLower);
-        return nameMatch || typeMatch || vicinityMatch;
-      });
-    }
+    // Note: Keyword filtering is now handled by Text Search API when keyword is provided
+    // No need for client-side keyword filtering anymore
 
     // Update status if filtering removed all results
     transformedData.results = filteredResults;
