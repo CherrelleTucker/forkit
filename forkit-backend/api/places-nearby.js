@@ -207,6 +207,7 @@ export default async function handler(req, res) {
     // Transform new API response to match old API format for client compatibility
     const transformedData = {
       status: data.places && data.places.length > 0 ? 'OK' : 'ZERO_RESULTS',
+      _debug: { totalFetched: allPlaces.length, timestamp: new Date().toISOString() },
       results: (data.places || []).map((place) => ({
         place_id: place.id,
         name: place.displayName?.text || '',
