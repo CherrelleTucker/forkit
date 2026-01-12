@@ -165,15 +165,17 @@ export default async function handler(req, res) {
           }),
         });
 
-      // Make 4 parallel requests with different types and rankings for maximum variety
+      // Make parallel requests with different types and rankings for maximum variety
       const responses = await Promise.all([
         makeRequest(['restaurant'], 'DISTANCE'),
         makeRequest(['restaurant'], 'POPULARITY'),
-        makeRequest(['american_restaurant', 'italian_restaurant', 'mexican_restaurant'], 'POPULARITY'),
-        makeRequest(['fast_food_restaurant', 'pizza_restaurant', 'hamburger_restaurant'], 'POPULARITY'),
+        makeRequest(['american_restaurant'], 'POPULARITY'),
+        makeRequest(['mexican_restaurant'], 'POPULARITY'),
+        makeRequest(['italian_restaurant'], 'POPULARITY'),
+        makeRequest(['chinese_restaurant'], 'POPULARITY'),
       ]);
 
-      const labels = ['restaurant/distance', 'restaurant/popularity', 'cuisine types', 'fast food types'];
+      const labels = ['restaurant/distance', 'restaurant/popularity', 'american', 'mexican', 'italian', 'chinese'];
 
       // Process all responses and deduplicate
       for (let i = 0; i < responses.length; i++) {
@@ -184,7 +186,12 @@ export default async function handler(req, res) {
             const newPlaces = data.places.filter(p => !existingIds.has(p.id));
             allPlaces = allPlaces.concat(newPlaces);
             console.log(`${labels[i]}: ${data.places.length} places (${newPlaces.length} new)`);
+          } else {
+            console.log(`${labels[i]}: 0 places returned`);
           }
+        } else {
+          const errorText = await responses[i].text();
+          console.error(`${labels[i]} FAILED: ${responses[i].status} - ${errorText}`);
         }
       }
 
