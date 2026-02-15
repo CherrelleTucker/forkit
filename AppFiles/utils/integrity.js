@@ -2,7 +2,16 @@
 // Handles Google Play Integrity token generation for app authenticity verification
 
 import { Platform } from 'react-native';
-import * as AppIntegrity from 'expo-app-integrity';
+
+// Only import AppIntegrity on native platforms (not web)
+let AppIntegrity = null;
+if (Platform.OS !== 'web') {
+  try {
+    AppIntegrity = require('expo-app-integrity');
+  } catch (e) {
+    console.log('expo-app-integrity not available');
+  }
+}
 
 // Cache the integrity token for the session
 let cachedToken = null;
@@ -18,8 +27,8 @@ const TOKEN_CACHE_DURATION = 1000 * 60 * 60; // 1 hour
  */
 export async function getIntegrityToken() {
   try {
-    // Only support Android for now
-    if (Platform.OS !== 'android') {
+    // Only support Android for now (not web or iOS)
+    if (Platform.OS !== 'android' || !AppIntegrity) {
       console.log('Play Integrity only available on Android');
       return null;
     }
@@ -123,5 +132,5 @@ function generateNonce() {
  * @returns {boolean} True if available
  */
 export function isIntegrityAvailable() {
-  return Platform.OS === 'android' && !!AppIntegrity;
+  return Platform.OS === 'android' && AppIntegrity !== null;
 }

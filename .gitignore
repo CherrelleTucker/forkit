@@ -4,3 +4,6 @@ build/
 # Large binary files
 *.aab
 *.apk
+.claude/
+tmpclaude-*
+nul

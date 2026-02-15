@@ -219,12 +219,15 @@ expo start
 
 ### 3.2 Preview on Device/Emulator
 
-**Option A: Physical Device with Expo Go (Fastest)**
+**Option A: Physical Device with Expo Go (Fastest - PREFERRED)**
 1. Install "Expo Go" app from:
    - Android: Google Play Store
    - iOS: Apple App Store
 2. Scan QR code from terminal
-3. App loads with live reload
+3. **IMPORTANT:** After scanning, SCROLL DOWN on the screen - you'll see two options:
+   - "Use development build" (top)
+   - **"Use Expo Go" (below - TAP THIS ONE)**
+4. App loads with live reload
 
 **Option B: Android Emulator**
 ```bash
@@ -674,14 +677,19 @@ eas build --profile production --platform android
 ```
 Local Development (Expo Go)
    ↓ [Build AAB]
-Internal Testing (1-20 testers)
-   ↓ [Promote/Build new AAB]
-Closed Testing (up to 100,000 testers)
-   ↓ [Promote/Build new AAB]
-Open Testing (unlimited, opt-in)
-   ↓ [Promote/Submit for review]
-Production (public, staged rollout)
+Internal Testing (up to 100 testers, no review)
+   ↓ [Build AAB, submit to Closed Testing]
+Closed Testing (up to 100,000 testers, requires review)
+   ↓ [REQUIRED: 20+ testers for 14+ days]
+   ↓ [After 14 days: Promote to Production]
+Production (public, requires review, staged rollout)
 ```
+
+**IMPORTANT - Google's Requirements for New Apps:**
+- You CANNOT go directly to Production for new apps/developer accounts
+- You MUST have 20+ testers opted into Closed Testing for 14+ days
+- After the 14-day period, you can promote to Production
+- Internal Testing does NOT count toward the 14-day requirement
 
 ### 8.2 Internal Testing Deployment
 
@@ -720,18 +728,27 @@ eas build --profile production --platform android
 
 ### 8.3 Closed Testing Deployment
 
-**When:** After internal testing passes, need more testers
+**When:** After internal testing passes, REQUIRED step before Production
 
 **Steps:**
 1. Play Console → Testing → Closed testing
-2. Create release (or promote from Internal Testing)
-3. Upload AAB OR promote existing release
-4. Manage testers (email lists, up to 100,000)
-5. Save → Review → Start rollout
+2. Create release (or build new AAB)
+3. Upload AAB
+4. Set up testers:
+   - Create email list OR
+   - Use opt-in link (copy from Testers tab)
+5. Save → Review → Start rollout (requires Google review, 1-3 days)
+
+**CRITICAL - 14-Day Requirement:**
+- You need **20+ testers** opted into Closed Testing
+- They must be active for **14+ consecutive days**
+- After 14 days, the "Promote to Production" option becomes available
+- Send opt-in link to your Internal Testing testers to speed this up
 
 **Timeline:**
-- Available to testers: Immediately (no review)
-- Expands testing to more users
+- Google review: 1-3 days
+- 14-day tester requirement: Starts after testers opt in
+- After 14 days: Can promote to Production
 
 ### 8.4 Open Testing Deployment
 
@@ -1196,8 +1213,8 @@ eas secret:create --name KEY_NAME --value "value"
 
 ---
 
-**Last Updated:** 2026-01-08
-**ForkIt Version:** 1.0.0
+**Last Updated:** 2026-02-14
+**ForkIt Version:** 1.0.0 (versionCode 6)
 **Author:** Cherrelle Tucker
 
 ---

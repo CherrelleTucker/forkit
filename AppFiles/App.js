@@ -10,8 +10,10 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   Easing,
   Linking,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -20,11 +22,36 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useFonts, Montserrat_700Bold } from "@expo-google-fonts/montserrat";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const isSmallScreen = SCREEN_HEIGHT < 700;
+const scale = (size) => isSmallScreen ? size * 0.85 : size;
 import * as Location from "expo-location";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
+import Svg, { Rect, Circle, Path, G } from "react-native-svg";
 import { getIntegrityToken, verifyIntegrityToken } from "./utils/integrity";
+
+// Bootstrap Fork Icon - tines down with teal pea
+function ForkIcon({ size = 24, color = "#FB923C", rotation = "0deg" }) {
+  const width = size * (6 / 20);
+  const height = size;
+  return (
+    <Svg width={width} height={height} viewBox="2.5 0 6 20" style={{ transform: [{ rotate: rotation }] }}>
+      {/* Fork rotated 180° so tines point down, scaled narrower at tines */}
+      <G transform="rotate(180, 5.5, 8) translate(5.5, 0) scale(0.8, 1) translate(-5.5, 0)">
+        <Path
+          d="M4.25 0a.25.25 0 0 1 .25.25v5.122a.128.128 0 0 0 .256.006l.233-5.14A.25.25 0 0 1 5.24 0h.522a.25.25 0 0 1 .25.238l.233 5.14a.128.128 0 0 0 .256-.006V.25A.25.25 0 0 1 6.75 0h.29a.5.5 0 0 1 .498.458l.423 5.07a1.69 1.69 0 0 1-1.059 1.711l-.053.022a.92.92 0 0 0-.58.884L6.47 15a.971.971 0 1 1-1.942 0l.202-6.855a.92.92 0 0 0-.58-.884l-.053-.022a1.69 1.69 0 0 1-1.059-1.712L3.462.458A.5.5 0 0 1 3.96 0z"
+          fill={color}
+        />
+      </G>
+      {/* Teal pea below fork */}
+      <Circle cx="5.5" cy="18" r="1.5" fill="#2DD4BF" />
+    </Svg>
+  );
+}
 
 // ==============================
 // CONFIG
@@ -35,52 +62,46 @@ import { getIntegrityToken, verifyIntegrityToken } from "./utils/integrity";
 // For EAS Build, use: eas secret:create --scope project --name EXPO_PUBLIC_BACKEND_URL --value your_url
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || "http://localhost:3000";
 
+// Theme colors - "Fork it" energy (Orange + Teal + Cream)
+const THEME = {
+  accent: "#FB923C",        // Bright orange - primary accent
+  accentLight: "#FDBA74",   // Lighter orange for gradients
+  accentDark: "#EA580C",    // Deeper orange for contrast
+  pop: "#2DD4BF",           // Punchy teal - secondary pop color
+  success: "#2DD4BF",       // Teal for success states
+  cream: "#FEF3E2",         // Warm cream for highlights
+  muted: "#A1A1AA",         // Zinc for muted elements
+  background: ["#0D0D0D", "#1A1410", "#0D0D0D"], // Warm dark gradient
+};
+
 const FORKING_LINES = [
-  "Forking the universe for answers…",
+  "Picking for you…",
+  "One sec…",
+  "Finding food…",
   "Consulting the vibes…",
-  "Summoning a local gem…",
   "Rolling the dinner dice…",
-  "Calculating maximum deliciousness…",
-  "Loading: dopamine delivery…",
   "Cross-referencing cravings…",
-  "Asking the fork spirits…",
   "Selecting your destiny…",
-  "Deploying the Decision Hammer™…",
-  "Sharpening the fork…",
   "Spearing the perfect spot…",
-  "Tine-tuning your options…",
   "Pronging through possibilities…",
-  "Fork in the road… choosing wisely…",
-  "Stabbing at greatness…",
-  "Four tines, infinite choices…",
-  "Consulting the fork council…",
-  "Fork calibration in progress…",
-  "Prong power: ACTIVATED…",
+  "Overthinking is over…",
+  "Almost there…",
 ];
 
 const SUCCESS_LINES = [
-  "Boom. Dinner decided.",
-  "Fork yeah. Go eat.",
-  "This one feels right. Trust me.",
-  "Chosen by fate (and filters).",
-  "Congrats, you're free now.",
-  "Forking done. Get it.",
-  "Forked and ready to roll.",
-  "The fork has spoken.",
-  "Consider yourself forked.",
-  "Fork it. This is the one.",
-  "Perfectly pronged. 🍴",
-  "Tines aligned. Destiny found.",
+  "There. Done. Go eat.",
+  "Picked. Now go.",
+  "That's the one.",
+  "Decision made.",
+  "Done. Stop scrolling. Go.",
+  "No more debates. Just go.",
 ];
 
 const FAIL_LINES = [
-  "Your filters are too powerful 😭",
-  "Nothing survived the vibe check.",
-  "No matches. The fork spirits demand broader radius.",
-  "Forking failed. Loosen those filters.",
-  "Can't fork with these settings, chief.",
-  "The fork demands compromise.",
-  "Zero prongs landed. Try again.",
+  "Nothing? Lower your standards.",
+  "Zero results. Widen the radius.",
+  "Your filters said no to everything.",
+  "Too picky. Loosen up.",
 ];
 
 const PICKY_EATER_OPTIONS = [
@@ -174,8 +195,10 @@ function getSignatureDish(restaurantName) {
 }
 
 function buildRecipeLinks(restaurantName, dishName) {
-  const q = encodeURIComponent(`${restaurantName} ${dishName} copycat recipe`);
-  const qDish = encodeURIComponent(`${dishName} copycat recipe`);
+  // If dishName is empty (unknown signature dish), just search restaurant name
+  const searchTerm = dishName ? `${restaurantName} ${dishName}` : restaurantName;
+  const q = encodeURIComponent(`${searchTerm} copycat recipe`);
+  const qDish = encodeURIComponent(`${dishName || restaurantName} copycat recipe`);
   return [
     { label: "YouTube", icon: "logo-youtube", url: `https://www.youtube.com/results?search_query=${q}` },
     { label: "Google", icon: "search", url: `https://www.google.com/search?q=${q}` },
@@ -211,7 +234,6 @@ async function getPlaceDetails(placeId) {
     });
 
     if (!response.ok) {
-      console.error('Place details request failed:', response.status);
       return null;
     }
 
@@ -219,7 +241,6 @@ async function getPlaceDetails(placeId) {
     if (data.status !== "OK") return null;
     return data.result;
   } catch (error) {
-    console.error('Error fetching place details:', error);
     return null;
   }
 }
@@ -239,7 +260,7 @@ function Chip({ active, label, icon, onPress }) {
         <Ionicons
           name={icon}
           size={14}
-          color={active ? "#0B0B0F" : "rgba(255,255,255,0.90)"}
+          color={active ? "#FFFFFF" : "rgba(255,255,255,0.90)"}
           style={{ marginRight: 6 }}
         />
       ) : null}
@@ -248,16 +269,18 @@ function Chip({ active, label, icon, onPress }) {
   );
 }
 
-function GlassCard({ title, icon, children }) {
+function GlassCard({ title, icon, children, accent }) {
   return (
-    <View style={styles.cardOuter}>
-      <LinearGradient colors={["rgba(255,255,255,0.13)", "rgba(255,255,255,0.06)"]} style={styles.card}>
-        <View style={styles.cardHeader}>
-          {icon ? <Ionicons name={icon} size={18} color="rgba(255,255,255,0.92)" /> : null}
-          <Text style={styles.cardTitle}>{title}</Text>
+    <View style={[styles.cardOuter, accent && styles.cardOuterAccent]}>
+      <View style={[styles.card, accent && styles.cardAccent]}>
+        <View style={styles.cardContent}>
+          <View style={styles.cardHeader}>
+            {icon ? <Ionicons name={icon} size={18} color={accent ? THEME.accent : "rgba(255,255,255,0.92)"} /> : null}
+            <Text style={styles.cardTitle}>{title}</Text>
+          </View>
+          {children}
         </View>
-        {children}
-      </LinearGradient>
+      </View>
     </View>
   );
 }
@@ -266,17 +289,17 @@ function PrimaryButton({ label, onPress, disabled, loading, spinDeg, bounceY }) 
   return (
     <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.9}>
       <LinearGradient
-        colors={disabled ? ["rgba(255,255,255,0.26)", "rgba(255,255,255,0.18)"] : ["#FFFFFF", "#D9D9FF"]}
+        colors={disabled ? ["rgba(255,255,255,0.26)", "rgba(255,255,255,0.18)"] : [THEME.accent, THEME.accentDark]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[styles.primaryBtn, disabled ? { opacity: 0.7 } : null]}
       >
         <Animated.View style={{ transform: [{ rotate: spinDeg }, { translateY: bounceY }], marginRight: 10 }}>
-          <Ionicons name="restaurant" size={18} color="#0B0B0F" />
+          <Ionicons name="restaurant" size={18} color="#FFFFFF" />
         </Animated.View>
 
         <Text style={styles.primaryText}>{label}</Text>
-        {loading ? <ActivityIndicator style={{ marginLeft: 10 }} /> : null}
+        {loading ? <ActivityIndicator color="#FFFFFF" style={{ marginLeft: 10 }} /> : null}
       </LinearGradient>
     </TouchableOpacity>
   );
@@ -285,20 +308,23 @@ function PrimaryButton({ label, onPress, disabled, loading, spinDeg, bounceY }) 
 function GhostButton({ label, icon, onPress, disabled }) {
   return (
     <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.85} style={[styles.ghostBtn, disabled ? { opacity: 0.5 } : null]}>
-      {icon ? <Ionicons name={icon} size={16} color="rgba(255,255,255,0.95)" style={{ marginRight: 8 }} /> : null}
-      <Text style={styles.ghostText}>{label}</Text>
+      {icon ? <Ionicons name={icon} size={16} color={THEME.pop} style={{ marginRight: 8 }} /> : null}
+      <Text style={[styles.ghostText, { color: THEME.pop }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
 function Toast({ text, kind }) {
   if (!text) return null;
-  const icon =
-    kind === "success" ? "sparkles" : kind === "warn" ? "alert-circle" : "information-circle";
+  // Skip success toasts entirely
+  if (kind === "success") return null;
+  const icon = kind === "warn" ? "alert-circle" : "information-circle";
+  const iconColor = kind === "warn" ? THEME.accent : THEME.accent;
+  const borderColor = kind === "warn" ? "rgba(251,146,60,0.5)" : "rgba(251,146,60,0.4)";
   return (
     <View style={styles.toastWrap}>
-      <View style={styles.toast}>
-        <Ionicons name={icon} size={16} color="rgba(255,255,255,0.95)" />
+      <View style={[styles.toast, { borderColor }]}>
+        <Ionicons name={icon} size={16} color={iconColor} />
         <Text style={styles.toastText}>{text}</Text>
       </View>
     </View>
@@ -386,9 +412,9 @@ const pickyStyles = StyleSheet.create({
     borderRadius: 12,
   },
   wheelOptionSelected: {
-    backgroundColor: 'rgba(255,107,107,0.3)',
+    backgroundColor: 'rgba(251,146,60,0.3)',
     borderWidth: 2,
-    borderColor: '#FF6B6B',
+    borderColor: '#FB923C',
   },
   wheelEmoji: {
     fontSize: 28,
@@ -428,6 +454,11 @@ const pickyStyles = StyleSheet.create({
 // ==============================
 
 export default function App() {
+  // Load Montserrat Bold font
+  const [fontsLoaded] = useFonts({
+    Montserrat_700Bold,
+  });
+
   // Location
   const [hasLocationPerm, setHasLocationPerm] = useState(false);
   const [coords, setCoords] = useState(null);
@@ -453,9 +484,12 @@ export default function App() {
   const [pickedDetails, setPickedDetails] = useState(null);
 
   // Playful status
-  const [statusLine, setStatusLine] = useState("Can't decide? Fork it. Let the algorithm choose.");
+  const [statusLine, setStatusLine] = useState("Hungry? Just pick already.");
   const [forkingLine, setForkingLine] = useState("");
   const [toast, setToast] = useState({ text: "", kind: "info" });
+  const [showInfo, setShowInfo] = useState(false);
+  const [infoScrollRatio, setInfoScrollRatio] = useState(0);
+  const [infoScrollVisible, setInfoScrollVisible] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   // Picky Eater Mode
@@ -523,15 +557,13 @@ export default function App() {
         }
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         setCoords(loc.coords);
-        showToast("Forking initialized. Ready to spear. 🍴", "success", 1800);
+        showToast("Ready. Let's pick something.", "success", 1800);
 
         // Perform Play Integrity check on app launch
         const integrityToken = await getIntegrityToken();
         if (integrityToken && BACKEND_URL) {
           // Verify token with backend (silent - don't block user)
-          const verificationResult = await verifyIntegrityToken(integrityToken, BACKEND_URL);
-          console.log('Play Integrity verification result:', verificationResult);
-          // Don't block user based on result - just log for monitoring
+          await verifyIntegrityToken(integrityToken, BACKEND_URL);
         }
       } catch (e) {
         Alert.alert("Location error", String(e?.message || e));
@@ -574,10 +606,9 @@ export default function App() {
     setSlotText("");
 
     const line = pickRandom(FORKING_LINES);
-    setStatusLine("Okay okay… I got you. Forking now.");
+    setStatusLine("Picking…");
     setForkingLine(line);
-    showToast("Forking… 🍴", "info", 900);
-
+    
     try {
       animateForking();
       await Haptics.selectionAsync();
@@ -595,8 +626,6 @@ export default function App() {
       const integrityToken = await getIntegrityToken();
 
       // Make request to backend, excluding recently shown restaurants
-      console.log('ForkIt request:', { keyword: cuisineKeyword, radius: radiusMeters, minRating, maxPrice, openNow, hiddenGems, pickyEaterMode });
-
       const response = await fetch(`${BACKEND_URL}/api/places-nearby`, {
         method: 'POST',
         headers: {
@@ -638,7 +667,7 @@ export default function App() {
 
       if (!results.length) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        setStatusLine("Your filters are ruthless 😭");
+        setStatusLine("Nothing matched. Try again.");
         setForkingLine("");
         showToast(pickRandom(FAIL_LINES), "warn", 2200);
         return;
@@ -696,7 +725,8 @@ export default function App() {
   const signatureDish = placeName ? getSignatureDish(placeName) : null;
   const recipeLinks = useMemo(() => {
     if (!placeName || !signatureDish) return [];
-    const dish = signatureDish === "Signature dish" ? "copycat" : signatureDish;
+    // Pass empty string for unknown signature dish to avoid "copycat copycat" in search
+    const dish = signatureDish === "Signature dish" ? "" : signatureDish;
     return buildRecipeLinks(placeName, dish);
   }, [placeName, signatureDish]);
 
@@ -704,20 +734,41 @@ export default function App() {
   const price = pickedDetails?.price_level ?? picked?.price_level ?? null;
   const vicinity = pickedDetails?.vicinity ?? picked?.vicinity ?? "";
 
+  // Wait for fonts to load
+  if (!fontsLoaded) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#0D0D0D" }}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator size="large" color={THEME.accent} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <LinearGradient colors={["#0B0B0F", "#17163B", "#0B0B0F"]} style={{ flex: 1 }}>
+      <LinearGradient colors={THEME.background} style={{ flex: 1 }}>
         <Toast text={toast.text} kind={toast.kind} />
 
-        <ScrollView ref={scrollViewRef} contentContainerStyle={styles.container}>
+        <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={styles.container}
+            refreshControl={
+              <RefreshControl
+                refreshing={loading}
+                onRefresh={forkIt}
+                tintColor={THEME.accent}
+                colors={[THEME.accent]}
+              />
+            }
+          >
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.logoBubble}>
-              <Ionicons name="nutrition" size={22} color="#0B0B0F" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>ForkIt!</Text>
-              <Text style={styles.subtitle}>Fork indecision. Fork regret. Fork it all.</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>Fork<Text style={styles.titleIt}>It</Text></Text>
+              <View style={{ marginLeft: -5, marginTop: -6 }}>
+                <ForkIcon size={44} color={THEME.accent} rotation="0deg" />
+              </View>
             </View>
           </View>
 
@@ -728,7 +779,7 @@ export default function App() {
             </Text>
 
             <PrimaryButton
-              label={loading ? "Forking Hard…" : "ForkIt! Now"}
+              label={loading ? "Picking…" : "Just Fork It"}
               onPress={forkIt}
               disabled={loading}
               loading={loading}
@@ -738,59 +789,56 @@ export default function App() {
 
             {!!forkingLine && loading ? <Text style={styles.forkingLine}>{forkingLine}</Text> : null}
 
-            <Text style={styles.hint}>
-              {poolCount ? `Last eligible pool: ${poolCount}${recentlyShown.length > 0 ? ` (${recentlyShown.length} excluded to avoid repeats)` : ''}` : "Tip: widen radius or lower rating if you get zero results."}
-            </Text>
-
             {!!slotText && loading ? (
 
 <View style={styles.slotBox}>
-                <Text style={styles.slotLabel}>Forking preview</Text>
+                <Text style={styles.slotLabel}>Picking...</Text>
                 <Text style={styles.slotText} numberOfLines={1}>
                   {slotText}
                 </Text>
               </View>
             ) : null}
 
-            {/* Picky Eater Mode Toggle */}
-            <TouchableOpacity
-              onPress={() => {
-                const newMode = !pickyEaterMode;
-                setPickyEaterMode(newMode);
-                if (newMode) {
-                  // Turning ON picky eater mode
-                  setFiltersExpanded(false);
-                  setCuisineKeyword("");
-                  setSelectedPickyOption(null);
-                  setHiddenGems(false); // Chains are OK for picky eaters
-                }
-              }}
-              activeOpacity={0.85}
-              style={[styles.filtersToggle, pickyEaterMode && styles.pickyEaterToggleActive]}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Text style={{ fontSize: 18, marginRight: 8 }}>🎯</Text>
-                <Text style={styles.filtersToggleText}>Picky Eater Mode</Text>
-              </View>
-              <View style={[styles.modeIndicator, pickyEaterMode && styles.modeIndicatorActive]}>
-                <Text style={styles.modeIndicatorText}>{pickyEaterMode ? "ON" : "OFF"}</Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* Picky Eater Wheel */}
-            {pickyEaterMode && (
-              <View style={styles.pickyEaterSection}>
-                <Text style={styles.pickyEaterTitle}>What can you eat today?</Text>
-                <PickyEaterWheel
-                  selectedOption={selectedPickyOption}
-                  onSelectOption={handlePickySelect}
-                />
-                {selectedPickyOption && (
-                  <Text style={styles.pickyEaterHint}>
-                    {selectedPickyOption.emoji} {selectedPickyOption.label} selected! Now tap ForkIt!
-                  </Text>
+            {/* Picky Eater Mode - hidden for now, to revisit later */}
+            {false && (
+              <>
+                <TouchableOpacity
+                  onPress={() => {
+                    const newMode = !pickyEaterMode;
+                    setPickyEaterMode(newMode);
+                    if (newMode) {
+                      setFiltersExpanded(false);
+                      setCuisineKeyword("");
+                      setSelectedPickyOption(null);
+                      setHiddenGems(false);
+                    }
+                  }}
+                  activeOpacity={0.85}
+                  style={[styles.filtersToggle, pickyEaterMode && styles.pickyEaterToggleActive]}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={{ fontSize: 18, marginRight: 8 }}>🎯</Text>
+                    <Text style={styles.filtersToggleText}>Picky Eater Mode</Text>
+                  </View>
+                  <View style={[styles.modeIndicator, pickyEaterMode && styles.modeIndicatorActive]}>
+                    <Text style={styles.modeIndicatorText}>{pickyEaterMode ? "ON" : "OFF"}</Text>
+                  </View>
+                </TouchableOpacity>
+                {pickyEaterMode && (
+                  <View style={styles.pickyEaterSection}>
+                    <Text style={styles.pickyEaterTitle}>What can you eat today?</Text>
+                    <PickyEaterWheel
+                      selectedOption={selectedPickyOption}
+                      onSelectOption={handlePickySelect}
+                    />
+                    {selectedPickyOption && (
+                      <Text style={styles.pickyEaterHint}>
+                        {selectedPickyOption.emoji} {selectedPickyOption.label} selected! Now tap ForkIt!
+                      </Text>
+                    )}
+                  </View>
                 )}
-              </View>
+              </>
             )}
 
             {/* Collapsible Filters */}
@@ -802,6 +850,9 @@ export default function App() {
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Ionicons name="options" size={16} color="rgba(255,255,255,0.9)" />
                 <Text style={styles.filtersToggleText}>Filters</Text>
+                {!filtersExpanded && poolCount > 0 && (
+                  <Text style={styles.filterCount}>{poolCount} found</Text>
+                )}
               </View>
               <Ionicons
                 name={filtersExpanded ? "chevron-up" : "chevron-down"}
@@ -812,14 +863,14 @@ export default function App() {
 
             {filtersExpanded && (
               <View style={styles.filtersContent}>
-                <Text style={styles.label}>Radius</Text>
+                <Text style={styles.label}>How far?</Text>
                 <View style={styles.row}>
                   {[1, 3, 5, 10, 15].map((m) => (
                     <Chip key={m} label={`${m} mi`} icon="navigate" active={radiusMiles === m} onPress={() => setRadiusMiles(m)} />
                   ))}
                 </View>
 
-                <Text style={styles.label}>Max price</Text>
+                <Text style={styles.label}>Max damage</Text>
                 <View style={styles.row}>
                   {[
                     { v: 1, t: "$" },
@@ -831,7 +882,7 @@ export default function App() {
                   ))}
                 </View>
 
-                <Text style={styles.label}>Minimum rating</Text>
+                <Text style={styles.label}>At least this good</Text>
                 <View style={styles.row}>
                   {[3.5, 4.0, 4.3, 4.5].map((r) => (
                     <Chip key={r} label={`${r}+`} icon="star" active={minRating === r} onPress={() => setMinRating(r)} />
@@ -870,9 +921,9 @@ export default function App() {
                 </View>
 
                 <View style={styles.toggleRow}>
-                  <Text style={styles.toggleLabel}>Hidden Gems</Text>
+                  <Text style={styles.toggleLabel}>Skip the chains</Text>
                   <Chip
-                    label={hiddenGems ? "LOCAL" : "ANY"}
+                    label={hiddenGems ? "ON" : "OFF"}
                     icon="sparkles"
                     active={hiddenGems}
                     onPress={() => setHiddenGems((v) => !v)}
@@ -901,29 +952,29 @@ export default function App() {
 
           {/* Result - Moved to top */}
           {picked ? (
-            <GlassCard title="Your pick" icon="restaurant">
+            <GlassCard title="You're going here" icon="restaurant" accent>
               <>
                 <Text style={styles.placeName}>{placeName}</Text>
 
                 <View style={styles.metaRow}>
                   <View style={styles.metaPill}>
-                    <Ionicons name="star" size={14} color="rgba(255,255,255,0.92)" />
+                    <Ionicons name="star" size={12} color={THEME.pop} />
                     <Text style={styles.metaText}>{rating ? String(rating) : "—"}</Text>
                   </View>
                   <View style={styles.metaPill}>
-                    <Ionicons name="cash" size={14} color="rgba(255,255,255,0.92)" />
+                    <Ionicons name="cash" size={12} color={THEME.success} />
                     <Text style={styles.metaText}>{dollars(price)}</Text>
                   </View>
-                  <View style={styles.metaPill}>
-                    <Ionicons name="location" size={14} color="rgba(255,255,255,0.92)" />
+                  <View style={[styles.metaPill, { minWidth: 120, maxWidth: 140 }]}>
+                    <Ionicons name="location" size={12} color={THEME.accent} />
                     <Text style={styles.metaText} numberOfLines={1}>
-                      {vicinity || "Nearby"}
+                      {vicinity ? vicinity.substring(0, 12) + "…" : "Nearby"}
                     </Text>
                   </View>
                 </View>
 
                 <View style={styles.actionRow}>
-                  <GhostButton label="Maps" icon="map" onPress={() => openMapsSearchByText(placeName)} />
+                  <GhostButton label="Let's Go" icon="map" onPress={() => openMapsSearchByText(placeName)} />
                   <GhostButton
                     label="Call"
                     icon="call"
@@ -934,15 +985,17 @@ export default function App() {
 
                 <View style={styles.divider} />
 
-                <Text style={styles.sectionTitle}>
-                  <Ionicons name="home" size={16} color="rgba(255,255,255,0.9)" />{" "}
-                  Dish it up at home (copycat edition)
-                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+                  <Ionicons name="home" size={16} color={THEME.pop} />
+                  <Text style={[styles.sectionTitle, { marginBottom: 0, marginLeft: 8 }]}>
+                    Don't want to leave after all?
+                  </Text>
+                </View>
 
                 <Text style={styles.muted}>
                   {signatureDish === "Signature dish"
-                    ? "Signature dish unknown — here are copycat searches for the vibe."
-                    : `Signature dish: ${signatureDish}`}
+                    ? "Copycat recipes. Close enough."
+                    : `Try making: ${signatureDish}`}
                 </Text>
 
                 <View style={{ height: 10 }} />
@@ -954,20 +1007,91 @@ export default function App() {
                     style={styles.linkRow}
                   >
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Ionicons name={l.icon} size={16} color="rgba(255,255,255,0.9)" />
+                      <Ionicons name={l.icon} size={16} color={THEME.pop} />
                       <Text style={styles.linkText}>{l.label}</Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.65)" />
+                    <Ionicons name="chevron-forward" size={18} color="rgba(45,212,191,0.7)" />
                   </TouchableOpacity>
                 ))}
               </>
             </GlassCard>
           ) : null}
 
-          <Text style={styles.footer}>
-            🍴 Fork responsibly. Tines may vary. Signature dishes detected via fork heuristics (v1).
-          </Text>
+          <View style={styles.footerRow}>
+            <Text style={styles.footer}>
+              Life's too short to debate dinner.
+            </Text>
+            <TouchableOpacity onPress={() => setShowInfo(true)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Ionicons name="information-circle-outline" size={18} color="rgba(255,255,255,0.35)" />
+            </TouchableOpacity>
+          </View>
         </ScrollView>
+
+        {showInfo && (
+          <View style={styles.infoOverlay}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setShowInfo(false)} />
+            <View style={styles.infoCard}>
+              <TouchableOpacity style={styles.infoClose} onPress={() => setShowInfo(false)}>
+                <Ionicons name="close" size={22} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
+
+              <View style={{ flexDirection: "row", maxHeight: SCREEN_HEIGHT * 0.65 }}>
+              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}
+                onContentSizeChange={(w, h) => setInfoScrollVisible(h > SCREEN_HEIGHT * 0.65)}
+                onScroll={({ nativeEvent }) => {
+                  const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+                  const maxScroll = contentSize.height - layoutMeasurement.height;
+                  setInfoScrollRatio(maxScroll > 0 ? contentOffset.y / maxScroll : 0);
+                }}
+                scrollEventThrottle={16}
+              >
+                <Text style={[styles.infoHeading, { marginTop: 0 }]}>How ForkIt Works</Text>
+                <Text style={styles.infoText}>
+                  ForkIt uses Google Maps to find restaurants near you based on your filters, then picks one at random - so you never have to debate dinner again.
+                </Text>
+
+                <Text style={styles.infoHeading}>Powered by Google Places</Text>
+                <Text style={styles.infoText}>
+                  Restaurant names, ratings, prices, and hours all come from Google's Places API. We don't make this stuff up.
+                </Text>
+
+                <Text style={styles.infoHeading}>Filters & Search</Text>
+                <Text style={styles.infoText}>
+                  Use cuisine keywords to narrow results (e.g. "pizza", "seafood"). Pick quick-tap filters for common cravings. ForkIt also remembers what it already showed you during your session and won't repeat them - resets when you close the app.
+                </Text>
+
+                <Text style={styles.infoHeading}>Skip the Chains</Text>
+                <Text style={styles.infoText}>
+                  When this is on, ForkIt filters out common chain restaurants so you're more likely to discover local spots. Turn it off if you're cool with the usual suspects.
+                </Text>
+
+                <Text style={styles.infoHeading}>Limitations</Text>
+                <Text style={styles.infoText}>
+                  Results depend on what Google has listed in your area. Some spots may be missing, have outdated hours, or inaccurate info. Ratings and prices come straight from Google. The more specific your filters, the fewer results you'll get.
+                </Text>
+
+                <Text style={styles.infoHeading}>Your Location</Text>
+                <Text style={styles.infoText}>
+                  Your location is used only to find nearby spots. It's never stored or shared. Period.
+                </Text>
+
+                <Text style={[styles.infoHeading, { color: THEME.pop }]}>Coming Soon</Text>
+                <Text style={styles.infoText}>
+                  {"\u2022"} Restricted eater mode - dietary filters for allergies, preferences, and restrictions{"\n"}
+                  {"\u2022"} "Never show this again" - permanently block places you don't want to see{"\n"}
+                  {"\u2022"} Copycat recipe optimization - better recipe matches for your picked spot{"\n"}
+                  {"\u2022"} More to come - we're just getting started
+                </Text>
+              </ScrollView>
+              {infoScrollVisible && (
+                <View style={styles.scrollTrack}>
+                  <View style={[styles.scrollThumb, { top: `${infoScrollRatio * 70}%` }]} />
+                </View>
+              )}
+              </View>
+            </View>
+          </View>
+        )}
       </LinearGradient>
     </SafeAreaView>
   );
@@ -978,14 +1102,17 @@ export default function App() {
 // ==============================
 
 const styles = StyleSheet.create({
-  container: { padding: 16, paddingTop: 40, paddingBottom: 48 },
+  container: { padding: scale(14), paddingTop: scale(30), paddingBottom: scale(20) },
 
-  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14, marginTop: 24 },
+  header: { alignItems: "center", marginBottom: scale(10), marginTop: scale(16) },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+  itBox: { flexDirection: "row", alignItems: "center", backgroundColor: THEME.accent, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 2 },
+  itText: { color: "#000", fontSize: scale(28), fontFamily: "Montserrat_700Bold" },
   logoBubble: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.95)",
+    width: scale(52),
+    height: scale(52),
+    borderRadius: scale(16),
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -994,10 +1121,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 6,
   },
-  title: { color: "white", fontSize: 34, fontWeight: "900", letterSpacing: 0.2, lineHeight: 34 },
+  title: { color: "#FB923C", fontSize: scale(40), fontFamily: "Montserrat_700Bold", letterSpacing: 0.2, lineHeight: scale(46) },
+  titleIt: { color: "#2DD4BF" },
   subtitle: { color: "rgba(255,255,255,0.75)", fontSize: 13, marginTop: 4 },
 
-  toastWrap: { position: "absolute", top: 50, left: 0, right: 0, zIndex: 999, alignItems: "center" },
+  toastWrap: { position: "absolute", top: "45%", left: 0, right: 0, zIndex: 999, alignItems: "center" },
   toast: {
     flexDirection: "row",
     alignItems: "center",
@@ -1012,9 +1140,9 @@ const styles = StyleSheet.create({
   toastText: { color: "rgba(255,255,255,0.92)", fontWeight: "900" },
 
   hero: {
-    padding: 16,
+    padding: scale(12),
     borderRadius: 18,
-    marginBottom: 14,
+    marginBottom: scale(10),
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
     backgroundColor: "rgba(255,255,255,0.06)",
@@ -1023,14 +1151,14 @@ const styles = StyleSheet.create({
   heroBold: { color: "white", fontWeight: "900" },
 
   primaryBtn: {
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    borderRadius: 14,
+    paddingVertical: scale(12),
+    paddingHorizontal: scale(12),
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryText: { color: "#0B0B0F", fontWeight: "900", fontSize: 16 },
+  primaryText: { color: "#FFFFFF", fontWeight: "900", fontSize: 16 },
 
   forkingLine: {
     marginTop: 10,
@@ -1058,6 +1186,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginLeft: 8,
   },
+  filterCount: {
+    color: THEME.pop,
+    fontSize: 12,
+    fontWeight: "800",
+    marginLeft: 10,
+  },
   filtersContent: {
     marginTop: 12,
     paddingTop: 12,
@@ -1078,19 +1212,33 @@ const styles = StyleSheet.create({
 
   cardOuter: {
     borderRadius: 18,
-    marginBottom: 14,
+    marginBottom: scale(10),
     shadowColor: "#000",
     shadowOpacity: 0.25,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 10 },
     elevation: 6,
   },
+  cardOuterAccent: {
+    shadowColor: "#FB923C",
+    shadowOpacity: 0.4,
+  },
   card: {
     borderRadius: 18,
-    padding: 14,
+    padding: 4,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(251,146,60,0.15)",
     overflow: "hidden",
+  },
+  cardContent: {
+    backgroundColor: "rgba(13,13,13,0.85)",
+    borderRadius: 14,
+    padding: scale(14),
+  },
+  cardAccent: {
+    borderColor: "rgba(251,146,60,0.3)",
+    backgroundColor: "rgba(251,146,60,0.1)",
   },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
   cardTitle: { color: "white", fontSize: 16, fontWeight: "900" },
@@ -1107,10 +1255,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   chipIdle: { backgroundColor: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.18)" },
-  chipActive: { backgroundColor: "rgba(255,255,255,0.95)", borderColor: "rgba(255,255,255,0.95)" },
+  chipActive: { backgroundColor: "rgba(251,146,60,0.9)", borderColor: "#FB923C" },
   chipText: { fontSize: 12, fontWeight: "900" },
   chipTextIdle: { color: "rgba(255,255,255,0.88)" },
-  chipTextActive: { color: "#0B0B0F" },
+  chipTextActive: { color: "#FFFFFF" },
 
   inputWrap: {
     flexDirection: "row",
@@ -1147,39 +1295,39 @@ const styles = StyleSheet.create({
   },
   empty: { color: "rgba(255,255,255,0.75)", fontSize: 13, lineHeight: 18, textAlign: 'center' },
 
-  placeName: { color: "white", fontSize: 22, fontWeight: "950", marginTop: 2, marginBottom: 10 },
+  placeName: { color: "white", fontSize: scale(20), fontWeight: "950", marginTop: 2, marginBottom: scale(8) },
 
-  metaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  metaRow: { flexDirection: "row", flexWrap: "nowrap", gap: scale(6), marginBottom: scale(10) },
   metaPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
     paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 15,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.16)",
     backgroundColor: "rgba(255,255,255,0.06)",
-    maxWidth: "100%",
+    flexShrink: 1,
   },
-  metaText: { color: "rgba(255,255,255,0.88)", fontWeight: "900" },
+  metaText: { color: "rgba(255,255,255,0.88)", fontWeight: "700", fontSize: 11 },
 
-  actionRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
+  actionRow: { flexDirection: "row", gap: scale(8), flexWrap: "wrap" },
   ghostBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    paddingVertical: scale(10),
+    paddingHorizontal: scale(10),
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#2DD4BF",
+    backgroundColor: "transparent",
     flexGrow: 1,
   },
   ghostText: { color: "rgba(255,255,255,0.95)", fontWeight: "900" },
 
-  divider: { height: 1, backgroundColor: "rgba(255,255,255,0.14)", marginVertical: 14 },
+  divider: { height: 1, backgroundColor: "rgba(255,255,255,0.14)", marginVertical: scale(10) },
 
   sectionTitle: { color: "white", fontSize: 14, fontWeight: "950", marginBottom: 6 },
   muted: { color: "rgba(255,255,255,0.70)", fontSize: 13, lineHeight: 18 },
@@ -1188,22 +1336,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
+    paddingVertical: scale(10),
+    paddingHorizontal: scale(10),
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "rgba(0,0,0,0.18)",
-    marginBottom: 10,
+    borderColor: "rgba(45,212,191,0.25)",
+    backgroundColor: "rgba(45,212,191,0.06)",
+    marginBottom: scale(8),
   },
   linkText: { color: "rgba(255,255,255,0.92)", fontWeight: "950", marginLeft: 10 },
 
-  footer: { marginTop: 4, textAlign: "center", color: "rgba(255,255,255,0.5)", fontSize: 12, lineHeight: 16 },
+  footer: { marginTop: 4, textAlign: "center", color: "rgba(255,255,255,0.5)", fontSize: 12, lineHeight: 16, flex: 1 },
+  footerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 20, marginTop: 4, marginBottom: 8 },
+  infoOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "center", alignItems: "center", zIndex: 1000 },
+  infoCard: { backgroundColor: "rgba(26,20,16,0.95)", borderRadius: 18, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)", padding: 24, marginHorizontal: 24, maxWidth: 380, width: "90%" },
+  infoClose: { position: "absolute", top: 12, right: 12, zIndex: 1 },
+  infoHeading: { color: "#FB923C", fontSize: 15, fontWeight: "900", marginTop: 14, marginBottom: 4 },
+  infoText: { color: "rgba(255,255,255,0.75)", fontSize: 13, fontWeight: "600", lineHeight: 19 },
+  scrollTrack: { width: 4, backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 2, marginLeft: 8, marginTop: 30 },
+  scrollThumb: { position: "absolute", width: 4, height: "30%", backgroundColor: "rgba(45,212,191,0.5)", borderRadius: 2 },
 
   // Picky Eater Mode styles
   pickyEaterToggleActive: {
-    borderColor: "rgba(255,107,107,0.5)",
-    backgroundColor: "rgba(255,107,107,0.15)",
+    borderColor: "rgba(251,146,60,0.5)",
+    backgroundColor: "rgba(251,146,60,0.15)",
   },
   modeIndicator: {
     paddingHorizontal: 10,
@@ -1212,7 +1368,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.1)",
   },
   modeIndicatorActive: {
-    backgroundColor: "rgba(255,107,107,0.8)",
+    backgroundColor: "rgba(251,146,60,0.8)",
   },
   modeIndicatorText: {
     color: "white",
@@ -1246,9 +1402,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
-    backgroundColor: "rgba(255,107,107,0.2)",
+    backgroundColor: "rgba(251,146,60,0.2)",
     borderWidth: 1,
-    borderColor: "rgba(255,107,107,0.4)",
+    borderColor: "rgba(251,146,60,0.4)",
     alignSelf: "flex-start",
   },
   activeFilterEmoji: {
