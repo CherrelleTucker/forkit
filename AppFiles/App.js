@@ -8,11 +8,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Dimensions,
   Easing,
   Linking,
+  Platform,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -27,12 +27,13 @@ import { useFonts, Montserrat_700Bold } from "@expo-google-fonts/montserrat";
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const isSmallScreen = SCREEN_HEIGHT < 700;
 const scale = (size) => isSmallScreen ? size * 0.85 : size;
-import * as Location from "expo-location";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Rect, Circle, Path, G } from "react-native-svg";
 import { getIntegrityToken, verifyIntegrityToken } from "./utils/integrity";
+import { haptics, showAlert } from "./utils/platform";
+import { requestLocationPermission, getCurrentPosition } from "./utils/location";
 
 // Bootstrap Fork Icon - tines down with teal pea
 function ForkIcon({ size = 24, color = "#FB923C", rotation = "0deg" }) {
@@ -209,12 +210,12 @@ function buildRecipeLinks(restaurantName, dishName) {
 function openMapsSearchByText(name) {
   const q = encodeURIComponent(name);
   const url = `https://www.google.com/maps/search/?api=1&query=${q}`;
-  Linking.openURL(url).catch(() => Alert.alert("Error", "Could not open maps."));
+  Linking.openURL(url).catch(() => showAlert("Error", "Could not open maps."));
 }
 
 function callPhone(phoneNumber) {
   if (!phoneNumber) return;
-  Linking.openURL(`tel:${phoneNumber}`).catch(() => Alert.alert("Error", "Could not start a call."));
+  Linking.openURL(`tel:${phoneNumber}`).catch(() => showAlert("Error", "Could not start a call."));
 }
 
 async function fetchJson(url) {
@@ -538,7 +539,7 @@ export default function App() {
   function handlePickySelect(option) {
     setSelectedPickyOption(option);
     setCuisineKeyword(option.keywords.split(",")[0].trim());
-    Haptics.selectionAsync();
+    haptics.selectionAsync();
     showToast(`${option.emoji} ${option.label} selected!`, "success", 1200);
   }
 
@@ -546,17 +547,23 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
+      // On web, skip auto-requesting location on mount — browsers block
+      // non-user-initiated geolocation requests. Location will be requested
+      // when the user taps "Fork It" instead.
+      if (Platform.OS === 'web') return;
+
       try {
         // Request location permissions
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await requestLocationPermission();
         const ok = status === "granted";
         setHasLocationPerm(ok);
         if (!ok) {
           showToast("Location permission needed to fork properly 😅", "warn", 2200);
           return;
         }
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const loc = await getCurrentPosition();
         setCoords(loc.coords);
+        AsyncStorage.setItem('lastLocation', JSON.stringify({ latitude: loc.coords.latitude, longitude: loc.coords.longitude, timestamp: Date.now() }));
         showToast("Ready. Let's pick something.", "success", 1800);
 
         // Perform Play Integrity check on app launch
@@ -566,7 +573,7 @@ export default function App() {
           await verifyIntegrityToken(integrityToken, BACKEND_URL);
         }
       } catch (e) {
-        Alert.alert("Location error", String(e?.message || e));
+        showAlert("Location error", String(e?.message || e));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -574,7 +581,7 @@ export default function App() {
 
   async function forkIt() {
     if (!BACKEND_URL) {
-      Alert.alert("Configuration Error", "Backend URL not configured. Please check your .env file.");
+      showAlert("Configuration Error", "Backend URL not configured. Please check your .env file.");
       return;
     }
 
@@ -582,18 +589,19 @@ export default function App() {
     let currentCoords = coords;
     if (!hasLocationPerm || !currentCoords) {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await requestLocationPermission();
         if (status !== "granted") {
-          Alert.alert("Location needed", "Please enable location permissions in your phone's Settings to use ForkIt.");
+          showAlert("Location needed", "Please enable location permissions in your phone's Settings to use ForkIt.");
           return;
         }
         setHasLocationPerm(true);
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const loc = await getCurrentPosition();
         currentCoords = loc.coords;
         setCoords(currentCoords);
+        AsyncStorage.setItem('lastLocation', JSON.stringify({ latitude: currentCoords.latitude, longitude: currentCoords.longitude, timestamp: Date.now() }));
         showToast("Location acquired! Forking now...", "success", 1200);
       } catch (e) {
-        Alert.alert("Location error", "Could not get your location. Please check that location services are enabled.");
+        showAlert("Location error", "Could not get your location. Please check that location services are enabled.");
         return;
       }
     }
@@ -611,11 +619,11 @@ export default function App() {
     
     try {
       animateForking();
-      await Haptics.selectionAsync();
+      await haptics.selectionAsync();
 
       // Defensive check for valid coordinates
       if (!currentCoords || typeof currentCoords.latitude !== 'number' || typeof currentCoords.longitude !== 'number') {
-        Alert.alert("Location error", "Could not get valid coordinates. Please try again.");
+        showAlert("Location error", "Could not get valid coordinates. Please try again.");
         setLoading(false);
         return;
       }
@@ -666,7 +674,7 @@ export default function App() {
       setPoolCount(results.length);
 
       if (!results.length) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        await haptics.notificationAsync(haptics.NotificationFeedbackType.Warning);
         setStatusLine("Nothing matched. Try again.");
         setForkingLine("");
         showToast(pickRandom(FAIL_LINES), "warn", 2200);
@@ -681,7 +689,7 @@ export default function App() {
           ? forkEmojis[i % 4]
           : results[i % results.length]?.name || "Forking…";
         setSlotText(peek);
-        await Haptics.selectionAsync();
+        await haptics.selectionAsync();
         await sleep(45 + i * 6);
       }
 
@@ -695,7 +703,7 @@ export default function App() {
       setFiltersExpanded(false);
       setStatusLine(pickRandom(SUCCESS_LINES));
       setForkingLine("");
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await haptics.notificationAsync(haptics.NotificationFeedbackType.Success);
       showToast("Forking complete. Bon appétit! 🍴", "success", 1600);
 
       // Track this restaurant to avoid showing it again soon
@@ -715,7 +723,7 @@ export default function App() {
         setPickedDetails(details);
       }
     } catch (e) {
-      Alert.alert("Error", String(e?.message || e));
+      showAlert("Error", String(e?.message || e));
     } finally {
       setLoading(false);
     }
@@ -754,12 +762,14 @@ export default function App() {
             ref={scrollViewRef}
             contentContainerStyle={styles.container}
             refreshControl={
-              <RefreshControl
-                refreshing={loading}
-                onRefresh={forkIt}
-                tintColor={THEME.accent}
-                colors={[THEME.accent]}
-              />
+              Platform.OS !== 'web' ? (
+                <RefreshControl
+                  refreshing={loading}
+                  onRefresh={forkIt}
+                  tintColor={THEME.accent}
+                  colors={[THEME.accent]}
+                />
+              ) : undefined
             }
           >
           {/* Header */}
@@ -975,6 +985,12 @@ export default function App() {
 
                 <View style={styles.actionRow}>
                   <GhostButton label="Let's Go" icon="map" onPress={() => openMapsSearchByText(placeName)} />
+                  <GhostButton
+                    label="Website"
+                    icon="globe"
+                    onPress={() => Linking.openURL(pickedDetails?.website)}
+                    disabled={!pickedDetails?.website}
+                  />
                   <GhostButton
                     label="Call"
                     icon="call"

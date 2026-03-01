@@ -29,7 +29,7 @@
     },
     "android": {
       "package": "com.forkit.app",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B0B0F"
@@ -47,13 +47,31 @@
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
     },
     "plugins": [
       [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "ForkIt",
+              "label": "ForkIt - Random Pick",
+              "description": "Tap to get a random nearby restaurant",
+              "minWidth": "200dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "updatePeriodMillis": 0
+            }
+          ]
         }
       ]
     ],
