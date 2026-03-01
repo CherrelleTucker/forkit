@@ -1,7 +1,12 @@
 // ForkIt Backend - Place Details Proxy
 // Proxies requests to Google Places API (New) for detailed place information
 
+import { runSecurityChecks } from '../lib/security.js';
+
 export default async function handler(req, res) {
+  // Run security checks (CORS, origin, rate limiting)
+  if (!runSecurityChecks(req, res)) return;
+
   // Only accept POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });

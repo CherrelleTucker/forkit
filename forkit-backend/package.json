@@ -8,7 +8,7 @@
     "deploy": "vercel --prod"
   },
   "devDependencies": {
-    "vercel": "^50.1.6"
+    "vercel": "^41.0.2"
   },
   "engines": {
     "node": ">=18.x"

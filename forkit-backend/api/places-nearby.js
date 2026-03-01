@@ -1,7 +1,12 @@
 // ForkIt Backend - Places Nearby Search Proxy
 // Proxies requests to Google Places API (New) with server-side API key management
 
+import { runSecurityChecks } from '../lib/security.js';
+
 export default async function handler(req, res) {
+  // Run security checks (CORS, origin, rate limiting)
+  if (!runSecurityChecks(req, res)) return;
+
   // Only accept POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
@@ -76,17 +81,29 @@ export default async function handler(req, res) {
     if (hasKeyword) {
       // Use Text Search API for keyword searches (with pagination)
       const apiUrl = 'https://places.googleapis.com/v1/places:searchText';
+
+      // Text Search API requires a rectangle for locationRestriction
+      // Convert circle (center + radius) to a bounding box
+      const lat = parseFloat(latitude);
+      const lng = parseFloat(longitude);
+      const r = parseFloat(radius);
+      const latDelta = r / 111320; // ~111,320 meters per degree latitude
+      const lngDelta = r / (111320 * Math.cos(lat * (Math.PI / 180)));
+
       const requestBody = {
         textQuery: `${keyword.trim()} restaurant`,
         includedType: 'restaurant',
         maxResultCount: 20,
-        locationBias: {
-          circle: {
-            center: {
-              latitude: parseFloat(latitude),
-              longitude: parseFloat(longitude),
+        locationRestriction: {
+          rectangle: {
+            low: {
+              latitude: lat - latDelta,
+              longitude: lng - lngDelta,
             },
-            radius: parseFloat(radius),
+            high: {
+              latitude: lat + latDelta,
+              longitude: lng + lngDelta,
+            },
           },
         },
       };
