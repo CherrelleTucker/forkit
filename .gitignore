@@ -1,9 +1,31 @@
 # Build artifacts
 build/
+*.tar.gz
+*.app/
 
 # Large binary files
 *.aab
 *.apk
+*.ipa
+
+# Temp / scratch assets
+AppFiles/assets/icon-new.png
+AppFiles/assets/icon-temp.png
+
+# Environment variables
+.env
+.env.local
+
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+
+# Claude Code
 .claude/
 tmpclaude-*
 nul
+
+# Mockups / scratch
+mockup-*.html

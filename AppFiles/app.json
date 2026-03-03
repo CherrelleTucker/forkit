@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "scheme": "forkit",
     "newArchEnabled": true,
     "description": "Fork indecision. Random restaurant picker with copycat recipes. Just tap and we'll choose for you.",
@@ -18,13 +18,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.forkit.app",
-      "buildNumber": "3",
+      "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "ForkIt needs your location to find nearby restaurants and help you decide where to eat.",
-        "NSLocationAlwaysUsageDescription": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
-      },
-      "config": {
-        "googleMapsApiKey": ""
+        "CFBundleAllowMixedLocalizations": true,
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -34,17 +32,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B0B0F"
       },
-      "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "INTERNET"
-      ],
-      "edgeToEdgeEnabled": true,
-      "config": {
-        "googleMaps": {
-          "apiKey": ""
-        }
-      }
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "INTERNET"],
+      "edgeToEdgeEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -54,24 +43,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
-        }
-      ],
-      [
-        "react-native-android-widget",
-        {
-          "widgets": [
-            {
-              "name": "ForkIt",
-              "label": "ForkIt - Random Pick",
-              "description": "Tap to get a random nearby restaurant",
-              "minWidth": "200dp",
-              "minHeight": "110dp",
-              "targetCellWidth": 3,
-              "targetCellHeight": 2,
-              "updatePeriodMillis": 0
-            }
-          ]
+          "locationWhenInUsePermission": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
         }
       ]
     ],

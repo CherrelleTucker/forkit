@@ -12,7 +12,7 @@ const ALLOWED_ORIGINS = [
 // In-memory rate limit store (resets on cold start, which is fine for Vercel)
 const rateLimitStore = new Map();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute per IP
+const RATE_LIMIT_MAX_REQUESTS = 30; // 30 requests per minute per IP (autocomplete needs headroom)
 
 function getClientIp(req) {
   return req.headers['x-forwarded-for']?.split(',')[0]?.trim()

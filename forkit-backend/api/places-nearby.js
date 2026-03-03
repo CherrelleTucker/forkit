@@ -2,6 +2,7 @@
 // Proxies requests to Google Places API (New) with server-side API key management
 
 import { runSecurityChecks } from '../lib/security.js';
+import { parsePriceLevel } from '../lib/places.js';
 
 export default async function handler(req, res) {
   // Run security checks (CORS, origin, rate limiting)
@@ -12,22 +13,17 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  // Extract request parameters
-  const {
-    latitude,
-    longitude,
-    radius,
-    keyword,
-    opennow,
-    maxPrice,
-    minRating,
-    excludedPlaceIds, // Array of place IDs to exclude (recently shown)
-  } = req.body;
+  // Extract and validate request parameters
+  const body = req.body || {};
 
-  // Validate required parameters
-  if (!latitude || !longitude || !radius) {
+  const latitude = Number(body.latitude);
+  const longitude = Number(body.longitude);
+  const radius = Number(body.radius);
+
+  // Validate required parameters are numeric
+  if (isNaN(latitude) || isNaN(longitude) || isNaN(radius)) {
     return res.status(400).json({
-      error: 'Missing required parameters: latitude, longitude, radius',
+      error: 'Missing or invalid required parameters: latitude, longitude, radius',
     });
   }
 
@@ -44,6 +40,15 @@ export default async function handler(req, res) {
   if (radius < 100 || radius > 50000) {
     return res.status(400).json({ error: 'Invalid radius. Must be between 100 and 50000 meters.' });
   }
+
+  // Sanitize optional parameters
+  const keyword = typeof body.keyword === 'string' ? body.keyword.slice(0, 100) : '';
+  const opennow = Boolean(body.opennow);
+  const maxPrice = body.maxPrice != null ? Math.min(Math.max(Math.round(Number(body.maxPrice)), 0), 4) : null;
+  const minRating = body.minRating != null ? Math.min(Math.max(Number(body.minRating), 0), 5) : null;
+  const excludedPlaceIds = Array.isArray(body.excludedPlaceIds)
+    ? body.excludedPlaceIds.filter(id => typeof id === 'string').slice(0, 20)
+    : [];
 
   // Get API key from environment
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -131,9 +136,8 @@ export default async function handler(req, res) {
 
         if (!response.ok) {
           if (allPlaces.length > 0) break;
-          const errorText = await response.text();
-          console.error('Places API error:', response.status, errorText);
-          return res.status(response.status).json({ error: 'Places API request failed', details: errorText });
+          console.error('Places API error:', response.status, await response.text());
+          return res.status(502).json({ error: 'Search failed. Please try again.' });
         }
 
         const pageData = await response.json();
@@ -213,7 +217,7 @@ export default async function handler(req, res) {
       }
 
       if (allPlaces.length === 0) {
-        return res.status(500).json({ error: 'No results from Places API' });
+        return res.status(200).json({ status: 'ZERO_RESULTS', results: [] });
       }
     }
 
@@ -224,7 +228,6 @@ export default async function handler(req, res) {
     // Transform new API response to match old API format for client compatibility
     const transformedData = {
       status: data.places && data.places.length > 0 ? 'OK' : 'ZERO_RESULTS',
-      _debug: { totalFetched: allPlaces.length, timestamp: new Date().toISOString() },
       results: (data.places || []).map((place) => ({
         place_id: place.id,
         name: place.displayName?.text || '',
@@ -250,7 +253,7 @@ export default async function handler(req, res) {
     let filteredResults = transformedData.results;
 
     // Filter out recently shown places
-    if (excludedPlaceIds && Array.isArray(excludedPlaceIds) && excludedPlaceIds.length > 0) {
+    if (excludedPlaceIds.length > 0) {
       const excludedSet = new Set(excludedPlaceIds);
       filteredResults = filteredResults.filter((r) => !excludedSet.has(r.place_id));
       console.log(`Excluded ${excludedPlaceIds.length} recently shown places`);
@@ -264,14 +267,14 @@ export default async function handler(req, res) {
     }
 
     // Filter by max price if specified
-    if (maxPrice !== undefined && maxPrice !== null) {
+    if (maxPrice !== null) {
       filteredResults = filteredResults.filter(
         (r) => r.price_level === null || r.price_level <= maxPrice
       );
     }
 
     // Filter by minimum rating if specified
-    if (minRating !== undefined && minRating !== null) {
+    if (minRating !== null) {
       filteredResults = filteredResults.filter(
         (r) => (r.rating || 0) >= minRating
       );
@@ -289,21 +292,7 @@ export default async function handler(req, res) {
     return res.status(200).json(transformedData);
   } catch (error) {
     console.error('Error calling Places API:', error);
-    return res.status(500).json({
-      error: 'Internal server error',
-      message: error.message,
-    });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 
-// Helper function to convert priceLevel enum to numeric value
-function parsePriceLevel(priceLevel) {
-  const priceLevelMap = {
-    PRICE_LEVEL_FREE: 0,
-    PRICE_LEVEL_INEXPENSIVE: 1,
-    PRICE_LEVEL_MODERATE: 2,
-    PRICE_LEVEL_EXPENSIVE: 3,
-    PRICE_LEVEL_VERY_EXPENSIVE: 4,
-  };
-  return priceLevelMap[priceLevel] || null;
-}

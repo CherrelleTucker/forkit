@@ -9,7 +9,7 @@ Random restaurant picker app. Users tap "Fork It" to get a random nearby restaur
 - **Framework**: React Native + Expo (SDK 54)
 - **Entry point**: `index.js` → `App.js` (single-file app, all UI + logic)
 - **Key dependencies**: expo-location, expo-haptics, expo-linear-gradient, react-native-svg, @expo-google-fonts/montserrat
-- **Platform features**: Play Integrity (Android), home screen widgets (`widgets/`)
+- **Platform features**: Play Integrity (Android)
 - **Config**: `app.json`, `.env` (EXPO_PUBLIC_BACKEND_URL)
 
 ### Web App (`web/`)
@@ -19,7 +19,6 @@ Random restaurant picker app. Users tap "Fork It" to get a random nearby restaur
 - **Platform wrappers** (in `AppFiles/utils/`):
   - `platform.js` — Haptics (no-op on web) and Alert (window.alert on web)
   - `location.js` — Browser Geolocation API on web, expo-location on native
-- `index.js` guards widget registration behind `Platform.OS === 'android'`
 - `App.js` skips auto-location-request on web (deferred to user tap)
 - RefreshControl disabled on web
 

@@ -1,8 +1,5 @@
 .vercel
-vercel
 node_modules/
 .env
 *.log
 package-lock.json
-3.2.0
-4

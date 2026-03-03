@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# ForkIt Pre-Commit Hook
+# Runs lint-staged on changed files before every commit
+
+cd AppFiles && npx lint-staged

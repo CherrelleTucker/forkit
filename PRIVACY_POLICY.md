@@ -1,10 +1,10 @@
 # Privacy Policy for ForkIt
 
-**Last Updated:** January 7, 2026
+**Last Updated:** March 1, 2026
 
 ## Introduction
 
-ForkIt ("we," "our," or "the app") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and protect your information when you use the ForkIt mobile application.
+ForkIt ("we," "our," or "the app") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and protect your information when you use the ForkIt application on Android, iOS, or the web.
 
 ## Information We Collect
 
@@ -23,8 +23,8 @@ ForkIt collects and uses your device's location data to provide the core functio
 **Location data handling:**
 - Location data is processed in real-time and is NOT stored on our servers
 - Location data is NOT shared with third parties (except Google Places API for search functionality)
-- Location data is ephemeral (temporary) and only used during your active session
-- No location history is maintained
+- Your most recent location coordinates are temporarily cached on your device for faster searches. This cached data expires after 1 hour and is removed when you uninstall the app
+- No location history is maintained beyond the single most recent lookup
 
 ### Data NOT Collected
 
@@ -66,13 +66,20 @@ When you click these links, you leave the ForkIt app and are subject to the priv
 
 ## Permissions
 
-ForkIt requests the following Android permissions:
+ForkIt requests the following permissions:
 
+### Android
 1. **ACCESS_FINE_LOCATION** - For precise GPS location
 2. **ACCESS_COARSE_LOCATION** - For approximate location (fallback)
 3. **INTERNET** - To communicate with Google Places API
 
-You can revoke these permissions at any time through your device settings. If you deny location permissions, the app will not function as it requires location to search for nearby restaurants.
+### iOS
+1. **Location When In Use** - For GPS location while the app is open
+
+### Web
+1. **Geolocation** - Browser-level location access via the Geolocation API
+
+You can revoke these permissions at any time through your device or browser settings. If you deny location permissions, the app will not function as it requires location to search for nearby restaurants.
 
 ## Children's Privacy
 
@@ -134,8 +141,7 @@ Location data sent to Google Places API may be transferred internationally in ac
 
 If you have questions about this Privacy Policy or ForkIt's privacy practices, contact us at:
 
-**Email:** [YOUR_EMAIL_HERE]
-**GitHub:** [YOUR_GITHUB_REPO_HERE] (for issue reporting)
+**GitHub:** https://github.com/CherrelleTucker/forkit (for issue reporting)
 
 ## Consent
 

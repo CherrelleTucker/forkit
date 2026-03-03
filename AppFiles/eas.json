@@ -16,6 +16,11 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "ANDROID_HOME": "/Users/cherrelletucker/Library/Android/sdk",
+        "JAVA_HOME": "/Applications/Android Studio.app/Contents/jbr/Contents/Home",
+        "EXPO_PUBLIC_BACKEND_URL": "https://forkit-backend.vercel.app"
+      },
       "android": {
         "buildType": "apk"
       },
@@ -26,6 +31,9 @@
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "ios": {
+        "autoIncrement": true
       }
     },
     "development-simulator": {
@@ -45,9 +53,9 @@
         "releaseStatus": "draft"
       },
       "ios": {
-        "appleId": "YOUR_APPLE_ID_EMAIL@example.com",
-        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "YOUR_APPLE_TEAM_ID"
+        "appleId": "REPLACE_WITH_YOUR_APPLE_ID_EMAIL",
+        "ascAppId": "REPLACE_WITH_ASC_APP_ID",
+        "appleTeamId": "REPLACE_WITH_TEAM_ID"
       }
     }
   }

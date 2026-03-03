@@ -50,7 +50,7 @@ EAS Build handles iOS builds in the cloud without requiring:
 
 ### Step 1: Update app.json
 
-Your `app.json` already has a basic iOS section. We need to expand it:
+Your `app.json` already has the iOS section configured:
 
 ```json
 {
@@ -61,15 +61,14 @@ Your `app.json` already has a basic iOS section. We need to expand it:
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "ForkIt needs your location to find nearby restaurants and help you decide where to eat.",
-        "NSLocationAlwaysUsageDescription": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
-      },
-      "config": {
-        "googleMapsApiKey": ""
+        "CFBundleAllowMixedLocalizations": true
       }
     }
   }
 }
 ```
+
+> **Note:** No `googleMapsApiKey` is needed in app.json — the API key is managed server-side in the backend for security.
 
 **Key Fields:**
 - `bundleIdentifier`: Must match Android package name for consistency

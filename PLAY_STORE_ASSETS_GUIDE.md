@@ -255,7 +255,7 @@ FEATURES
 
 PHILOSOPHY
 
-We're not a replacement for Google Maps search. We're the "fuck it, just pick one" button you wish existed. Decision paralysis is real. ForkIt solves it.
+We're not a replacement for Google Maps search. We're the "just pick one already" button you wish existed. Decision paralysis is real. ForkIt solves it.
 
 Fork responsibly. Tines may vary. 🍴
 
@@ -265,13 +265,13 @@ PRIVACY
 
 ForkIt uses your location only to find nearby restaurants. We don't store your location data, don't require an account, and don't track your behavior. Simple as that.
 
-Read our full Privacy Policy: [YOUR_PRIVACY_POLICY_URL]
+Read our full Privacy Policy: https://CherrelleTucker.github.io/forkit/privacy.html
 
 ---
 
 FEEDBACK
 
-Found a bug? Have a feature request? Visit our GitHub: [YOUR_GITHUB_URL]
+Found a bug? Have a feature request? Visit our GitHub: https://github.com/CherrelleTucker/forkit
 
 Made with ❤️ (and hunger) for the indecisive eaters everywhere.
 ```

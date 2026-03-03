@@ -2,6 +2,7 @@
 // Proxies requests to Google Places API (New) for detailed place information
 
 import { runSecurityChecks } from '../lib/security.js';
+import { parsePriceLevel } from '../lib/places.js';
 
 export default async function handler(req, res) {
   // Run security checks (CORS, origin, rate limiting)
@@ -13,13 +14,18 @@ export default async function handler(req, res) {
   }
 
   // Extract place ID from request body
-  const { placeId } = req.body;
+  const placeId = req.body?.placeId;
 
   // Validate required parameter
   if (!placeId || typeof placeId !== 'string' || !placeId.trim()) {
     return res.status(400).json({
       error: 'Missing or invalid required parameter: placeId',
     });
+  }
+
+  // Validate placeId format and length (Google Place IDs are alphanumeric with hyphens/underscores)
+  if (placeId.length > 300 || !/^[A-Za-z0-9_-]+$/.test(placeId.trim())) {
+    return res.status(400).json({ error: 'Invalid placeId format.' });
   }
 
   // Get API key from environment
@@ -74,10 +80,7 @@ export default async function handler(req, res) {
         });
       }
 
-      return res.status(response.status).json({
-        error: 'Places API request failed',
-        details: errorText,
-      });
+      return res.status(502).json({ error: 'Failed to fetch place details.' });
     }
 
     const data = await response.json();
@@ -115,21 +118,7 @@ export default async function handler(req, res) {
     return res.status(200).json(transformedData);
   } catch (error) {
     console.error('Error calling Places API:', error);
-    return res.status(500).json({
-      error: 'Internal server error',
-      message: error.message,
-    });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 
-// Helper function to convert priceLevel enum to numeric value
-function parsePriceLevel(priceLevel) {
-  const priceLevelMap = {
-    PRICE_LEVEL_FREE: 0,
-    PRICE_LEVEL_INEXPENSIVE: 1,
-    PRICE_LEVEL_MODERATE: 2,
-    PRICE_LEVEL_EXPENSIVE: 3,
-    PRICE_LEVEL_VERY_EXPENSIVE: 4,
-  };
-  return priceLevelMap[priceLevel] || null;
-}

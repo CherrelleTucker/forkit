@@ -1,7 +1,15 @@
 // ForkIt Backend - Play Integrity Verification
 // Verifies Google Play Integrity tokens from the Android app
+//
+// STATUS: Stub implementation — returns 501 until real verification is configured.
+// See PRODUCTION IMPLEMENTATION GUIDE at bottom of file.
+
+import { runSecurityChecks } from '../lib/security.js';
 
 export default async function handler(req, res) {
+  // Run security checks (CORS, origin, rate limiting)
+  if (!runSecurityChecks(req, res)) return;
+
   // Only accept POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
@@ -12,56 +20,30 @@ export default async function handler(req, res) {
 
   // Validate required parameter
   if (!token || typeof token !== 'string' || !token.trim()) {
-    return res.status(400).json({
-      error: 'Missing or invalid required parameter: token',
-    });
+    return res.status(400).json({ error: 'Missing or invalid token.' });
   }
 
   // Get Google Cloud project number from environment
   const projectNumber = process.env.GOOGLE_CLOUD_PROJECT_NUMBER;
   if (!projectNumber) {
     console.error('GOOGLE_CLOUD_PROJECT_NUMBER not configured');
-    return res.status(500).json({ error: 'Server configuration error' });
+    return res.status(501).json({
+      verified: false,
+      error: 'Integrity verification not configured.',
+    });
   }
 
   try {
-    // Decode the integrity token
-    // The token is a JWT that contains verdict information
-    // For production, you should verify the token signature and decrypt it
-    // using Google's Play Integrity API server-side library
-
-    // For MVP, we'll do basic validation and logging
-    // In production, use @googleapis/playintegrity npm package
-
-    // Log the token receipt for monitoring
-    console.log('Received Play Integrity token for verification');
-    console.log('Token length:', token.length);
-    console.log('Project Number:', projectNumber);
-
-    // TODO: Implement full token verification using @googleapis/playintegrity
-    // For now, return a success response with logging
-    // This allows the app to work while you set up full verification
-
-    const result = {
-      verified: true,
-      message: 'Token received and logged. Full verification pending.',
-      timestamp: new Date().toISOString(),
-      // In production, include these fields from actual verification:
-      // deviceIntegrity: verdict.deviceIntegrity,
-      // appIntegrity: verdict.appIntegrity,
-      // accountDetails: verdict.accountDetails,
-    };
-
-    // Log for monitoring
-    console.log('Integrity check result:', result);
-
-    return res.status(200).json(result);
+    // TODO: Implement real token verification using @googleapis/playintegrity
+    // Until then, return 501 so callers know verification is not active.
+    // The client app is designed to work regardless (integrity is optional).
+    return res.status(501).json({
+      verified: false,
+      error: 'Integrity verification not yet implemented.',
+    });
   } catch (error) {
     console.error('Error verifying integrity token:', error);
-    return res.status(500).json({
-      error: 'Failed to verify integrity token',
-      message: error.message,
-    });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 
@@ -82,25 +64,16 @@ export default async function handler(req, res) {
  * const response = await client.v1.decodeIntegrityToken({
  *   packageName: 'com.forkit.app',
  *   parent: `projects/${projectNumber}`,
- *   requestBody: {
- *     integrityToken: token,
- *   },
+ *   requestBody: { integrityToken: token },
  * });
  *
  * const verdict = response.data.tokenPayloadExternal;
- *
- * // Check verdicts
  * const appRecognized = verdict.appIntegrity?.appRecognitionVerdict === 'PLAY_RECOGNIZED';
  * const deviceTrusted = verdict.deviceIntegrity?.deviceRecognitionVerdict?.includes('MEETS_DEVICE_INTEGRITY');
  *
- * if (!appRecognized || !deviceTrusted) {
- *   console.warn('Integrity check failed:', verdict);
- *   // Decide what to do: log, reject, etc.
- * }
- *
- * 3. Set up service account:
- *    - Create service account in Google Cloud Console
- *    - Grant "Play Integrity API" role
- *    - Download JSON key
- *    - Add to Vercel environment variables
+ * return res.status(200).json({
+ *   verified: appRecognized && deviceTrusted,
+ *   appIntegrity: verdict.appIntegrity,
+ *   deviceIntegrity: verdict.deviceIntegrity,
+ * });
  */

@@ -234,9 +234,8 @@ Before building your AAB, verify:
 - **Cost:** $200 free credit/month (~11,700 free searches)
 
 ### Support
-- **Privacy Policy:** [YOUR_URL_HERE - needs hosting]
-- **Contact Email:** [YOUR_EMAIL_HERE]
-- **GitHub:** [YOUR_REPO_HERE]
+- **Privacy Policy:** https://CherrelleTucker.github.io/forkit/privacy.html
+- **GitHub:** https://github.com/CherrelleTucker/forkit
 
 ---
 

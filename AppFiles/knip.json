@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["App.js"],
+  "ignoreDependencies": [
+    "react-dom",
+    "react-native-web",
+    "expo-system-ui",
+    "husky",
+    "lint-staged",
+    "eslint-config-prettier",
+    "@secretlint/core",
+    "@secretlint/secretlint-rule-preset-recommend"
+  ]
+}
