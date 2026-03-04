@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ForkIt",
+    "name": "ForkIt!",
     "slug": "forkit",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,8 +17,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.forkit.app",
-      "buildNumber": "1",
+      "bundleIdentifier": "com.ctuckersolutions.forkit",
+      "buildNumber": "4",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "ForkIt needs your location to find nearby restaurants and help you decide where to eat.",
         "CFBundleAllowMixedLocalizations": true,
