@@ -304,5 +304,21 @@ module.exports = {
         'no-magic-numbers': 'off',
       },
     },
+    {
+      // CLI scripts use console for output and don't need JSDoc
+      files: ['scripts/**/*.js'],
+      rules: {
+        'no-console': 'off',
+        'jsdoc/require-jsdoc': 'off',
+        'jsdoc/require-param': 'off',
+        'jsdoc/require-returns': 'off',
+        'no-magic-numbers': 'off',
+        'security/detect-object-injection': 'off',
+        'security/detect-non-literal-regexp': 'off',
+        'security/detect-unsafe-regex': 'off',
+        'max-depth': 'off',
+        'import/order': 'off',
+      },
+    },
   ],
 };

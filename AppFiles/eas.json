@@ -29,6 +29,9 @@
       }
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "https://forkit-backend.vercel.app"
+      },
       "android": {
         "buildType": "app-bundle"
       },

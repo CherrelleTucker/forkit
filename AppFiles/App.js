@@ -120,6 +120,7 @@ const RADIUS_CLAMP_MAX = 15;
 // Title font sizing
 const TITLE_FONT_SIZE = 40;
 const TITLE_LINE_HEIGHT = 46;
+const EASTER_EGG_TAPS = 7;
 
 // Screen dimensions and responsive scaling
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -538,6 +539,82 @@ function sleep(ms) {
 // UI COMPONENTS
 // ==============================
 
+function LocationSearchSection({
+  customLocation,
+  showLocationSearch,
+  locationQuery,
+  locationSuggestions,
+  onQueryChange,
+  onSelectSuggestion,
+  onCancel,
+}) {
+  if (!showLocationSearch && !customLocation) return null;
+  if (customLocation) {
+    return (
+      <View style={styles.customLocationRow}>
+        <View style={styles.customLocationPill}>
+          <Ionicons name="location" size={13} color={THEME.pop} />
+          <Text style={styles.customLocationText} numberOfLines={1}>
+            Searching near {customLocation.label}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.locationFieldWrap}>
+      <View style={styles.inputWrap}>
+        <Ionicons name="location-outline" size={16} color={THEME.textSubtle} />
+        <TextInput
+          value={locationQuery}
+          onChangeText={onQueryChange}
+          placeholder="Search from a different location"
+          placeholderTextColor={THEME.textFaint}
+          style={styles.input}
+          accessibilityLabel="Search near a different location"
+          keyboardAppearance="dark"
+          returnKeyType="search"
+          autoFocus
+        />
+        <TouchableOpacity
+          onPress={onCancel}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel="Cancel location search"
+        >
+          <Ionicons name="close" size={16} color={THEME.textSubtle} />
+        </TouchableOpacity>
+      </View>
+      {locationSuggestions.length > 0 && (
+        <View style={styles.suggestionsDropdown}>
+          {locationSuggestions.map((s) => (
+            <TouchableOpacity
+              key={s.placeId}
+              style={styles.suggestionItem}
+              onPress={() => onSelectSuggestion(s)}
+              accessibilityRole="button"
+              accessibilityLabel={s.description}
+            >
+              <Ionicons
+                name="location"
+                size={13}
+                color={THEME.accent}
+                style={styles.suggestionIconWrap}
+              />
+              <View style={styles.flex1}>
+                <Text style={styles.suggestionMain}>{s.mainText}</Text>
+                {s.secondaryText ? (
+                  <Text style={styles.suggestionSub}>{s.secondaryText}</Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function Chip({ active, label, icon, onPress }) {
   return (
     <TouchableOpacity
@@ -553,12 +630,14 @@ function Chip({ active, label, icon, onPress }) {
           name={icon}
           size={14}
           color={active ? THEME.white : THEME.textBright}
-          style={styles.iconMarginRight6}
+          style={label ? styles.iconMarginRight6 : null}
         />
       ) : null}
-      <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextIdle]}>
-        {label}
-      </Text>
+      {label ? (
+        <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextIdle]}>
+          {label}
+        </Text>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -681,6 +760,12 @@ export default function App() {
   const [cuisineKeyword, setCuisineKeyword] = useState('');
   const [hiddenGems, setHiddenGems] = useState(true);
 
+  // Custom search location (null = GPS mode)
+  const [customLocation, setCustomLocation] = useState(null);
+  const [locationQuery, setLocationQuery] = useState('');
+  const [locationSuggestions, setLocationSuggestions] = useState([]);
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
+
   // Data
   const [loading, setLoading] = useState(false);
   const [poolCount, setPoolCount] = useState(0);
@@ -721,6 +806,8 @@ export default function App() {
   const [spotsMsg, setSpotsMsg] = useState(null);
   const [addressSuggestions, setAddressSuggestions] = useState([]);
   const addressDebounceRef = useRef(null);
+  const locationDebounceRef = useRef(null);
+  const easterEggTaps = useRef(0);
 
   // Animations
   const spin = useRef(new Animated.Value(0)).current;
@@ -778,6 +865,7 @@ export default function App() {
     () => () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       if (addressDebounceRef.current) clearTimeout(addressDebounceRef.current);
+      if (locationDebounceRef.current) clearTimeout(locationDebounceRef.current);
     },
     [],
   );
@@ -858,6 +946,43 @@ export default function App() {
     });
     showToast('Location acquired! Forking now...', 'success', TOAST_SHORT);
     return newCoords;
+  }
+
+  function handleLocationQueryChange(text) {
+    setLocationQuery(text);
+    setLocationSuggestions([]);
+    if (locationDebounceRef.current) clearTimeout(locationDebounceRef.current);
+    if (text.trim().length >= 3) {
+      locationDebounceRef.current = setTimeout(async () => {
+        const { suggestions } = await fetchAddressSuggestions(text, coords);
+        setLocationSuggestions(suggestions);
+      }, DEBOUNCE_DELAY);
+    }
+  }
+
+  async function selectCustomLocation(suggestion) {
+    setLocationQuery(suggestion.description);
+    setLocationSuggestions([]);
+    const details = await getPlaceDetails(suggestion.placeId);
+    if (details?.geometry?.location) {
+      setCustomLocation({
+        latitude: details.geometry.location.lat,
+        longitude: details.geometry.location.lng,
+        label: suggestion.mainText || suggestion.description,
+      });
+      showToast(`Searching near ${suggestion.mainText}`, 'success', TOAST_SHORT);
+    } else {
+      showToast('Could not get location. Try another address.', 'warn', TOAST_DEFAULT);
+      setLocationQuery('');
+    }
+  }
+
+  function clearCustomLocation() {
+    setCustomLocation(null);
+    setLocationQuery('');
+    setLocationSuggestions([]);
+    setShowLocationSearch(false);
+    showToast('Switched back to your GPS location', 'info', TOAST_SHORT);
   }
 
   function handleForkError(e) {
@@ -972,19 +1097,23 @@ export default function App() {
     }
 
     let currentCoords;
-    try {
-      currentCoords = await ensureLocation();
-    } catch (_) {
-      showAlert(
-        'Location error',
-        'Could not get your location. Please check that location services are enabled.',
-      );
-      isForkingRef.current = false;
-      return;
-    }
-    if (!currentCoords) {
-      isForkingRef.current = false;
-      return;
+    if (customLocation) {
+      currentCoords = { latitude: customLocation.latitude, longitude: customLocation.longitude };
+    } else {
+      try {
+        currentCoords = await ensureLocation();
+      } catch (_) {
+        showAlert(
+          'Location error',
+          'Could not get your location. Please check that location services are enabled.',
+        );
+        isForkingRef.current = false;
+        return;
+      }
+      if (!currentCoords) {
+        isForkingRef.current = false;
+        return;
+      }
     }
 
     setLoading(true);
@@ -1197,7 +1326,34 @@ export default function App() {
                       onPress={() => setRadiusMiles(m.v)}
                     />
                   ))}
+                  <Chip
+                    label=""
+                    icon="location"
+                    active={!!customLocation || showLocationSearch}
+                    onPress={() => {
+                      if (customLocation) {
+                        clearCustomLocation();
+                      } else {
+                        setShowLocationSearch((v) => !v);
+                      }
+                    }}
+                  />
                 </View>
+                <LocationSearchSection
+                  customLocation={customLocation}
+                  showLocationSearch={showLocationSearch}
+                  locationQuery={locationQuery}
+                  locationSuggestions={locationSuggestions}
+                  onQueryChange={handleLocationQueryChange}
+                  onSelectSuggestion={selectCustomLocation}
+                  onClear={clearCustomLocation}
+                  onOpen={() => setShowLocationSearch(true)}
+                  onCancel={() => {
+                    setShowLocationSearch(false);
+                    setLocationQuery('');
+                    setLocationSuggestions([]);
+                  }}
+                />
 
                 <Text style={styles.label}>Max damage</Text>
                 <View style={styles.row}>
@@ -1651,21 +1807,30 @@ export default function App() {
           visible={showInfo}
           transparent
           animationType="fade"
-          onRequestClose={() => setShowInfo(false)}
+          onRequestClose={() => {
+            setShowInfo(false);
+            easterEggTaps.current = 0;
+          }}
           statusBarTranslucent
         >
           <View style={styles.infoOverlay} accessibilityViewIsModal>
             <TouchableOpacity
               style={StyleSheet.absoluteFill}
               activeOpacity={1}
-              onPress={() => setShowInfo(false)}
+              onPress={() => {
+                setShowInfo(false);
+                easterEggTaps.current = 0;
+              }}
               accessibilityLabel="Close info"
               accessibilityRole="button"
             />
             <View style={styles.infoCard} accessibilityRole="none">
               <TouchableOpacity
                 style={styles.infoClose}
-                onPress={() => setShowInfo(false)}
+                onPress={() => {
+                  setShowInfo(false);
+                  easterEggTaps.current = 0;
+                }}
                 accessibilityLabel="Close"
                 accessibilityRole="button"
               >
@@ -1805,6 +1970,21 @@ export default function App() {
                       </Text>
                     </TouchableOpacity>
                   </View>
+
+                  <Text
+                    style={styles.versionText}
+                    onPress={() => {
+                      easterEggTaps.current += 1;
+                      if (easterEggTaps.current >= EASTER_EGG_TAPS) {
+                        easterEggTaps.current = 0;
+                        setShowInfo(false);
+                        openMapsSearchByText('88 Buffet Huntsville AL');
+                      }
+                    }}
+                    suppressHighlighting
+                  >
+                    v1.0.0
+                  </Text>
                 </ScrollView>
                 {infoScrollVisible && (
                   <View style={styles.scrollTrack}>
@@ -2920,6 +3100,7 @@ const styles = StyleSheet.create({
   },
   infoSupportHeading: { color: THEME.cream, marginTop: 0 },
   infoSupportBtnWrap: { borderWidth: 1, marginTop: 10 },
+  versionText: { color: THEME.textHint, fontSize: 11, textAlign: 'center', marginTop: 16 },
   supportHeadingCenter: { marginTop: 0, textAlign: 'center' },
   supportSubCenter: { marginBottom: 18, textAlign: 'center' },
   supportHighlight: { color: THEME.cream, fontWeight: '800' },
@@ -2938,6 +3119,21 @@ const styles = StyleSheet.create({
   editSaveBtn: { marginTop: 8, paddingVertical: 8 },
   spotsMsg: { fontSize: 12, fontWeight: '700', marginBottom: 8 },
   addressFieldWrap: { marginTop: 8, zIndex: 10 },
+  locationFieldWrap: { zIndex: 10, marginTop: 10, marginBottom: 4 },
+  customLocationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  customLocationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: THEME.popBgMedium,
+    borderWidth: 1,
+    borderColor: THEME.popBorderMedium,
+    maxWidth: '100%',
+  },
+  customLocationText: { color: THEME.pop, fontSize: 12, fontWeight: '900', flexShrink: 1 },
   suggestionIconWrap: { marginRight: 8, marginTop: 2 },
   spotsSearchWrap: { marginTop: 10, marginBottom: 4 },
   spotInputMarginTop8: { marginTop: 8 },
