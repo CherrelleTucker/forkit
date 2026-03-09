@@ -244,7 +244,14 @@ export default async function handler(req, res) {
         types: place.types || [],
         business_status: place.businessStatus || 'OPERATIONAL',
         opening_hours: place.currentOpeningHours
-          ? { open_now: place.currentOpeningHours.openNow || false }
+          ? {
+              open_now: place.currentOpeningHours.openNow || false,
+              periods: (place.currentOpeningHours.periods || []).map((p) => ({
+                close: p.close
+                  ? { day: p.close.day, hour: p.close.hour, minute: p.close.minute }
+                  : null,
+              })),
+            }
           : null,
       })),
     };

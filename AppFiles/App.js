@@ -71,7 +71,9 @@ const DEBOUNCE_DELAY = 350;
 const THROTTLE_WINDOW = 60000;
 const THROTTLE_MAX_TAPS = 8;
 const RECENTLY_SHOWN_MAX = 10;
-const WALK_RESULTS_THRESHOLD = 40;
+const WALK_RESULTS_THRESHOLD = 25;
+const CLOSING_SOON_EXCLUDE_MIN = 30;
+const CLOSING_SOON_WARN_MIN = 60;
 
 // Layout constants
 const SMALL_SCREEN_THRESHOLD = 700;
@@ -1038,12 +1040,38 @@ export default function App() {
     return Array.isArray(data.results) ? data.results : [];
   }
 
+  function getMinutesUntilClosing(openingHours) {
+    if (!openingHours?.periods?.length) return null;
+    const now = new Date();
+    const currentDay = now.getDay();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Check for a closing time later today
+    for (const period of openingHours.periods) {
+      if (!period.close || period.close.day !== currentDay) continue;
+      const closeMinutes = period.close.hour * 60 + period.close.minute;
+      if (closeMinutes > currentMinutes) return closeMinutes - currentMinutes;
+    }
+
+    // Check for overnight closing (closes tomorrow before 6am)
+    const tomorrow = (currentDay + 1) % 7;
+    for (const period of openingHours.periods) {
+      if (!period.close || period.close.day !== tomorrow) continue;
+      const closeMinutes = period.close.hour * 60 + period.close.minute;
+      if (closeMinutes < 360) return 24 * 60 - currentMinutes + closeMinutes;
+    }
+
+    return null;
+  }
+
   function filterAndEnrichResults(raw) {
-    let results = raw.filter(
-      (r) =>
-        !isBlocked(r.place_id, r.name, blockedIds) &&
-        !(hiddenGems && looksLikeChain(r.name, r.user_ratings_total)),
-    );
+    let results = raw.filter((r) => {
+      if (isBlocked(r.place_id, r.name, blockedIds)) return false;
+      if (hiddenGems && looksLikeChain(r.name, r.user_ratings_total)) return false;
+      const mins = getMinutesUntilClosing(r.opening_hours);
+      if (mins !== null && mins < CLOSING_SOON_EXCLUDE_MIN) return false;
+      return true;
+    });
     const eligibleCustom = customPlaces.filter(
       (cp) => !recentlyShown.includes(cp.place_id) && !isBlocked(cp.place_id, cp.name, blockedIds),
     );
@@ -1159,7 +1187,18 @@ export default function App() {
       setStatusLine(pickRandom(SUCCESS_LINES));
       setForkingLine('');
       await haptics.notificationAsync(haptics.NotificationFeedbackType.Success);
-      showToast('Forking complete. Bon appétit! 🍴', 'success', TOAST_DEFAULT);
+      const closingMins = getMinutesUntilClosing(chosen.opening_hours);
+      if (closingMins !== null && closingMins <= CLOSING_SOON_WARN_MIN) {
+        const hurryMsg =
+          travelMode === 'walk' && radiusMiles <= 0.25
+            ? 'Get walking!'
+            : travelMode === 'walk'
+              ? 'Better hurry!'
+              : 'Drive safely!';
+        showToast(`Closing soon — ${hurryMsg}`, 'warn', TOAST_LONG);
+      } else {
+        showToast('Forking complete. Bon appétit! 🍴', 'success', TOAST_DEFAULT);
+      }
 
       // Track this restaurant to avoid showing it again soon
       setRecentlyShown((prev) => [chosen.place_id, ...prev].slice(0, RECENTLY_SHOWN_MAX));
