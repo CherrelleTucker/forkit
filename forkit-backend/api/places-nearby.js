@@ -247,6 +247,9 @@ export default async function handler(req, res) {
           ? {
               open_now: place.currentOpeningHours.openNow || false,
               periods: (place.currentOpeningHours.periods || []).map((p) => ({
+                open: p.open
+                  ? { day: p.open.day, hour: p.open.hour, minute: p.open.minute }
+                  : null,
                 close: p.close
                   ? { day: p.close.day, hour: p.close.hour, minute: p.close.minute }
                   : null,

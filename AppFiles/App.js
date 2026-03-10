@@ -74,6 +74,11 @@ const RECENTLY_SHOWN_MAX = 10;
 const WALK_RESULTS_THRESHOLD = 25;
 const CLOSING_SOON_EXCLUDE_MIN = 30;
 const CLOSING_SOON_WARN_MIN = 60;
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 1440;
+const DAYS_PER_WEEK = 7;
+const OVERNIGHT_CUTOFF_MIN = 360;
+const WALK_CLOSE_RADIUS = 0.25;
 
 // Layout constants
 const SMALL_SCREEN_THRESHOLD = 700;
@@ -1040,25 +1045,34 @@ export default function App() {
     return Array.isArray(data.results) ? data.results : [];
   }
 
+  /**
+   * Returns minutes until the restaurant closes, or null if unknown/open 24hrs.
+   * Compares device local time against the place's closing periods.
+   * Note: assumes device timezone matches the restaurant's timezone.
+   * @param {object|null} openingHours - opening_hours from the Places API response
+   * @returns {number|null} minutes until closing, or null if no closing data
+   */
   function getMinutesUntilClosing(openingHours) {
     if (!openingHours?.periods?.length) return null;
     const now = new Date();
     const currentDay = now.getDay();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const currentMinutes = now.getHours() * MINUTES_PER_HOUR + now.getMinutes();
 
     // Check for a closing time later today
     for (const period of openingHours.periods) {
       if (!period.close || period.close.day !== currentDay) continue;
-      const closeMinutes = period.close.hour * 60 + period.close.minute;
+      const closeMinutes = period.close.hour * MINUTES_PER_HOUR + period.close.minute;
       if (closeMinutes > currentMinutes) return closeMinutes - currentMinutes;
     }
 
     // Check for overnight closing (closes tomorrow before 6am)
-    const tomorrow = (currentDay + 1) % 7;
+    const tomorrow = (currentDay + 1) % DAYS_PER_WEEK;
     for (const period of openingHours.periods) {
       if (!period.close || period.close.day !== tomorrow) continue;
-      const closeMinutes = period.close.hour * 60 + period.close.minute;
-      if (closeMinutes < 360) return 24 * 60 - currentMinutes + closeMinutes;
+      const closeMinutes = period.close.hour * MINUTES_PER_HOUR + period.close.minute;
+      if (closeMinutes < OVERNIGHT_CUTOFF_MIN) {
+        return MINUTES_PER_DAY - currentMinutes + closeMinutes;
+      }
     }
 
     return null;
@@ -1069,8 +1083,7 @@ export default function App() {
       if (isBlocked(r.place_id, r.name, blockedIds)) return false;
       if (hiddenGems && looksLikeChain(r.name, r.user_ratings_total)) return false;
       const mins = getMinutesUntilClosing(r.opening_hours);
-      if (mins !== null && mins < CLOSING_SOON_EXCLUDE_MIN) return false;
-      return true;
+      return mins === null || mins >= CLOSING_SOON_EXCLUDE_MIN;
     });
     const eligibleCustom = customPlaces.filter(
       (cp) => !recentlyShown.includes(cp.place_id) && !isBlocked(cp.place_id, cp.name, blockedIds),
@@ -1189,12 +1202,12 @@ export default function App() {
       await haptics.notificationAsync(haptics.NotificationFeedbackType.Success);
       const closingMins = getMinutesUntilClosing(chosen.opening_hours);
       if (closingMins !== null && closingMins <= CLOSING_SOON_WARN_MIN) {
-        const hurryMsg =
-          travelMode === 'walk' && radiusMiles <= 0.25
-            ? 'Get walking!'
-            : travelMode === 'walk'
-              ? 'Better hurry!'
-              : 'Drive safely!';
+        let hurryMsg = 'Drive safely!';
+        if (travelMode === 'walk' && radiusMiles <= WALK_CLOSE_RADIUS) {
+          hurryMsg = 'Get walking!';
+        } else if (travelMode === 'walk') {
+          hurryMsg = 'Better hurry!';
+        }
         showToast(`Closing soon — ${hurryMsg}`, 'warn', TOAST_LONG);
       } else {
         showToast('Forking complete. Bon appétit! 🍴', 'success', TOAST_DEFAULT);
