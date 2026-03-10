@@ -2805,20 +2805,20 @@ const styles = StyleSheet.create({
   cardTitle: { color: THEME.white, fontSize: 16, fontWeight: '900' },
 
   label: { color: THEME.textSecondary, fontSize: 12, marginTop: 10, marginBottom: 6 },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
-    minHeight: 44,
+    minHeight: 34,
   },
   chipIdle: { backgroundColor: THEME.surfaceLight, borderColor: THEME.borderLight },
   chipActive: { backgroundColor: THEME.accentChip, borderColor: THEME.accent },
-  chipText: { fontSize: 12, fontWeight: '900' },
+  chipText: { fontSize: 11, fontWeight: '900' },
   chipTextIdle: { color: THEME.textBold },
   chipTextActive: { color: THEME.white },
 
@@ -3159,7 +3159,7 @@ const styles = StyleSheet.create({
   spotsMsg: { fontSize: 12, fontWeight: '700', marginBottom: 8 },
   addressFieldWrap: { marginTop: 8, zIndex: 10 },
   locationFieldWrap: { zIndex: 10, marginTop: 10, marginBottom: 4 },
-  customLocationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  customLocationRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 6 },
   customLocationPill: {
     flexDirection: 'row',
     alignItems: 'center',
