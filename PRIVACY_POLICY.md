@@ -1,16 +1,16 @@
-# Privacy Policy for ForkIt
+# Privacy Policy for ForkFate
 
-**Last Updated:** March 1, 2026
+**Last Updated:** March 10, 2026
 
 ## Introduction
 
-ForkIt ("we," "our," or "the app") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and protect your information when you use the ForkIt application on Android, iOS, or the web.
+ForkFate ("we," "our," or "the app") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and protect your information when you use the ForkFate application on Android, iOS, or the web.
 
 ## Information We Collect
 
 ### Location Data
 
-ForkIt collects and uses your device's location data to provide the core functionality of the app:
+ForkFate collects and uses your device's location data to provide the core functionality of the app:
 
 - **Precise Location (GPS)**: Used to find nearby restaurants within your selected radius
 - **Approximate Location**: Used as a fallback if precise location is unavailable
@@ -28,7 +28,7 @@ ForkIt collects and uses your device's location data to provide the core functio
 
 ### Data NOT Collected
 
-ForkIt does NOT collect, store, or process:
+ForkFate does NOT collect, store, or process:
 - Personal identifying information (name, email, phone number)
 - User accounts or login credentials
 - Payment information
@@ -40,33 +40,33 @@ ForkIt does NOT collect, store, or process:
 
 ### Google Places API
 
-ForkIt uses the Google Places API to:
+ForkFate uses the Google Places API to:
 - Search for nearby restaurants
 - Retrieve restaurant details (name, rating, price, hours, phone number)
 - Provide location-based services
 
-When you use ForkIt, your location data is sent to Google Places API in accordance with Google's Privacy Policy:
+When you use ForkFate, your location data is sent to Google Places API in accordance with Google's Privacy Policy:
 https://policies.google.com/privacy
 
 **Note:** We do not control Google's data practices. Please review Google's Privacy Policy to understand how they handle data.
 
 ### External Links
 
-ForkIt provides links to:
+ForkFate provides links to:
 - Google Maps (for navigation)
 - Recipe websites (YouTube, Google Search, Allrecipes)
 
-When you click these links, you leave the ForkIt app and are subject to the privacy policies of those external services.
+When you click these links, you leave the ForkFate app and are subject to the privacy policies of those external services.
 
 ## Data Storage
 
 - **Local Storage Only**: All app preferences and filter settings are stored locally on your device
-- **No Cloud Sync**: ForkIt does not use cloud storage or remote databases
+- **No Cloud Sync**: ForkFate does not use cloud storage or remote databases
 - **No Server-Side Storage**: We do not operate servers that store user data
 
 ## Permissions
 
-ForkIt requests the following permissions:
+ForkFate requests the following permissions:
 
 ### Android
 1. **ACCESS_FINE_LOCATION** - For precise GPS location
@@ -83,7 +83,7 @@ You can revoke these permissions at any time through your device or browser sett
 
 ## Children's Privacy
 
-ForkIt is intended for users aged 13 and older. We do not knowingly collect information from children under 13. If you believe a child under 13 has used the app, please contact us.
+ForkFate is intended for users aged 13 and older. We do not knowingly collect information from children under 13. If you believe a child under 13 has used the app, please contact us.
 
 ## Data Security
 
@@ -102,14 +102,14 @@ ForkIt is intended for users aged 13 and older. We do not knowingly collect info
 
 ### Data Deletion
 
-Since ForkIt does not collect or store personal data on remote servers:
+Since ForkFate does not collect or store personal data on remote servers:
 - Uninstalling the app removes all locally stored data
 - No account deletion is necessary (no accounts exist)
 - No server-side data to request deletion of
 
 ### Data Access
 
-You can view all data ForkIt stores by checking your device's local app storage. No remote data access is available because no remote data is stored.
+You can view all data ForkFate stores by checking your device's local app storage. No remote data access is available because no remote data is stored.
 
 ## Changes to This Privacy Policy
 
@@ -129,23 +129,23 @@ For users in the European Economic Area (EEA):
 ## California Privacy Rights (CCPA)
 
 For California residents:
-- ForkIt does not "sell" personal information
-- ForkIt does not collect personal information beyond location data (which is not stored)
+- ForkFate does not "sell" personal information
+- ForkFate does not collect personal information beyond location data (which is not stored)
 - No opt-out mechanism is needed as data is not sold or stored
 
 ## International Data Transfers
 
-Location data sent to Google Places API may be transferred internationally in accordance with Google's data practices. ForkIt itself does not transfer data internationally as we do not operate servers.
+Location data sent to Google Places API may be transferred internationally in accordance with Google's data practices. ForkFate itself does not transfer data internationally as we do not operate servers.
 
 ## Contact Us
 
-If you have questions about this Privacy Policy or ForkIt's privacy practices, contact us at:
+If you have questions about this Privacy Policy or ForkFate's privacy practices, contact us at:
 
 **GitHub:** https://github.com/CherrelleTucker/forkit (for issue reporting)
 
 ## Consent
 
-By using ForkIt, you consent to:
+By using ForkFate, you consent to:
 - This Privacy Policy
 - The collection and use of location data as described
 - The sharing of location data with Google Places API for functionality
@@ -162,4 +162,4 @@ By using ForkIt, you consent to:
 ✅ **User accounts?:** No accounts, no login, no personal data collection
 ✅ **How to delete data?:** Uninstall the app (all local data removed)
 
-ForkIt is a privacy-focused app that only processes the minimum data needed to help you choose a restaurant.
+ForkFate is a privacy-focused app that only processes the minimum data needed to help you choose a restaurant.

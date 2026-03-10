@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ForkIt!",
+    "name": "ForkFate",
     "slug": "forkit",
     "version": "1.1.0",
     "orientation": "portrait",
@@ -8,7 +8,7 @@
     "userInterfaceStyle": "dark",
     "scheme": "forkit",
     "newArchEnabled": true,
-    "description": "Fork indecision. Random restaurant picker with copycat recipes. Just tap and we'll choose for you.",
+    "description": "Let fate decide dinner. Random restaurant picker with copycat recipes. Just tap and we'll choose for you.",
     "privacy": "https://CherrelleTucker.github.io/forkit/privacy.html",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -20,7 +20,7 @@
       "bundleIdentifier": "com.ctuckersolutions.forkit",
       "buildNumber": "8",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "ForkIt needs your location to find nearby restaurants and help you decide where to eat.",
+        "NSLocationWhenInUseUsageDescription": "ForkFate needs your location to find nearby restaurants and help you decide where to eat.",
         "CFBundleAllowMixedLocalizations": true,
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -43,7 +43,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
+          "locationWhenInUsePermission": "ForkFate needs your location to find nearby restaurants and help you decide where to eat."
         }
       ]
     ],

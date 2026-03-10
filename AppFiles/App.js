@@ -1,4 +1,4 @@
-// ForkIt — Main app (App.js)
+// ForkFate — Main app (App.js)
 
 import { Ionicons } from '@expo/vector-icons';
 import { useFonts, Montserrat_700Bold } from '@expo-google-fonts/montserrat';
@@ -134,11 +134,87 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isSmallScreen = SCREEN_HEIGHT < SMALL_SCREEN_THRESHOLD;
 const scale = (size) => (isSmallScreen ? size * SMALL_SCREEN_SCALE : size);
 
+// Tour
+const TOUR_VERSION = 1; // Bump to re-show tour after major feature additions
+const TOUR_STEP_COUNT = 10;
+const TOUR_LAUNCH_DELAY = 800;
+const TOUR_EXPAND_DELAY = 350;
+const TOUR_TOOLTIP_MIN_TOP = 40;
+const TOUR_TOOLTIP_HEIGHT = 195;
+const TOUR_ARROW_OFFSET = 30;
+const TOUR_SPOT_PAD = 6;
+const TOUR_SPOT_RADIUS = 14;
+const TOUR_STEPS = [
+  {
+    ref: 'forkBtn',
+    title: 'Just fork it.',
+    desc: "Don't overthink it. The default filters work great — just tap the button and we'll pick a spot for you.",
+    arrow: 'down',
+  },
+  {
+    ref: 'modeToggle',
+    title: 'Walk vs Drive',
+    desc: "In a city? Switch to walk mode for spots you can stroll to. We'll even nudge you when there's a ton of options nearby.",
+    arrow: 'up',
+  },
+  {
+    ref: 'filtersToggle',
+    title: 'Filters',
+    desc: 'Tap here to open filters — distance, price, rating, cuisine, and more. Filters expand to reveal all your options.',
+    arrow: 'up',
+    expandFilters: true,
+  },
+  {
+    ref: 'distanceRow',
+    title: 'How Far?',
+    desc: 'Pick your distance. These change based on walk or drive mode. Or tap the pin to search near a custom address.',
+    arrow: 'up',
+  },
+  {
+    ref: 'maxDamageRow',
+    title: 'Max Damage & At Least This Good',
+    desc: 'These filters are inclusive. $$ means "up to $$." 3 stars means "3 stars and above." You get what you pick and everything below/above.',
+    arrow: 'up',
+  },
+  {
+    ref: 'openNowRow',
+    title: 'Open Now',
+    desc: "Only shows places that'll be open for at least another hour. No rushing to beat a closing kitchen.",
+    arrow: 'up',
+  },
+  {
+    ref: 'hiddenGemsRow',
+    title: 'Skip the Chains',
+    desc: "Filters out big chain restaurants so you discover local gems. Great for finding spots you'd never Google on your own.",
+    arrow: 'up',
+  },
+  {
+    ref: 'spotsRow',
+    title: '+ Spots & Your Lists',
+    desc: "Add your own spots — Mom's house, that taco truck, anywhere. Save favorites \u2764\uFE0F and block \uD83D\uDEAB places you never want to see again.",
+    arrow: 'up',
+  },
+  {
+    ref: null,
+    title: 'Copycat Recipes',
+    desc: "Don't want to leave the house after all? Every pick comes with easy-search buttons for copycat recipes on YouTube, Google, and Allrecipes.",
+    arrow: null,
+    mock: 'recipes',
+  },
+  {
+    ref: 'infoBtn',
+    title: 'Info & Support',
+    desc: "Tap \u2139\uFE0F anytime for details on how everything works, take this tour again, or support ForkFate's development.",
+    arrow: 'up',
+  },
+];
+
 const STORAGE_KEYS = {
   FAVORITES: '@forkit_favorites',
   BLOCKED: '@forkit_blocked',
   CUSTOM_PLACES: '@forkit_custom_places',
   TRAVEL_MODE: '@forkit_travel_mode',
+  TOUR_VERSION: '@forkit_tour_version',
 };
 
 // Theme colors - "Fork it" energy (Orange + Teal + Cream)
@@ -215,6 +291,24 @@ const THEME = {
   surfaceDropdown: 'rgba(26,20,16,0.98)',
   surfaceFavAction: 'rgba(255,255,255,0.04)',
   transparent: 'transparent',
+
+  // Tour colors
+  tourOverlay: 'rgba(0,0,0,0.75)',
+  tourSpotBorder: 'rgba(255,215,0,0.6)',
+  tourSpotBg: 'rgba(255,215,0,0.06)',
+  tourCard: '#1C1C2E',
+  tourCardBorder: '#2a2a3e',
+  tourGold: '#FFD700',
+  tourText: '#aaaaaa',
+  tourDotBg: '#333333',
+  tourBtnBg: '#FFD700',
+  tourBtnText: '#0B0B0F',
+  tourSkipText: '#666666',
+  tourLaunchBg: 'rgba(45,212,191,0.1)',
+  tourLaunchBorder: 'rgba(45,212,191,0.3)',
+  tourMockYoutube: 'rgba(255,0,0,0.15)',
+  tourMockGoogle: 'rgba(66,133,244,0.15)',
+  tourMockAllrecipes: 'rgba(255,165,0,0.15)',
 };
 
 const FORKING_LINES = [
@@ -806,6 +900,9 @@ export default function App() {
   const [showBlocked, setShowBlocked] = useState(false);
   const [showCustomPlaces, setShowCustomPlaces] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
+  const [tourSpotLayout, setTourSpotLayout] = useState(null);
   const [newCustomName, setNewCustomName] = useState('');
   const [newCustomAddress, setNewCustomAddress] = useState('');
   const [newCustomNotes, setNewCustomNotes] = useState('');
@@ -824,6 +921,19 @@ export default function App() {
   const isForkingRef = useRef(false);
   const forkTapsRef = useRef([]);
   const walkSuggestedRef = useRef(false);
+
+  // Tour spotlight refs
+  const tourRefs = {
+    forkBtn: useRef(null),
+    modeToggle: useRef(null),
+    filtersToggle: useRef(null),
+    distanceRow: useRef(null),
+    maxDamageRow: useRef(null),
+    openNowRow: useRef(null),
+    hiddenGemsRow: useRef(null),
+    spotsRow: useRef(null),
+    infoBtn: useRef(null),
+  };
 
   const spinDeg = spin.interpolate({
     inputRange: [0, 1],
@@ -906,6 +1016,81 @@ export default function App() {
     })();
   }, []);
 
+  function measureTourRef(refName) {
+    return new Promise((resolve) => {
+      const ref = tourRefs[refName];
+      if (!ref?.current?.measureInWindow) {
+        resolve(null);
+        return;
+      }
+      ref.current.measureInWindow((x, y, width, height) => {
+        resolve(width === 0 && height === 0 ? null : { x, y, width, height });
+      });
+    });
+  }
+
+  async function startTour() {
+    setTourStep(0);
+    setFiltersExpanded(false);
+    const layout = await measureTourRef('forkBtn');
+    setTourSpotLayout(layout);
+    setShowTour(true);
+  }
+
+  async function advanceTour() {
+    const next = tourStep + 1;
+    if (next >= TOUR_STEP_COUNT) {
+      endTour();
+      return;
+    }
+
+    const stepDef = TOUR_STEPS[next];
+
+    // Expand filters if needed for this step
+    const needsFilters =
+      stepDef.expandFilters ||
+      ['distanceRow', 'maxDamageRow', 'openNowRow', 'hiddenGemsRow'].includes(stepDef.ref);
+    if (needsFilters && !filtersExpanded) {
+      setFiltersExpanded(true);
+    }
+
+    // Steps with no ref (e.g. recipes mock) — center the tooltip
+    if (!stepDef.ref) {
+      setTourStep(next);
+      setTourSpotLayout(null);
+      return;
+    }
+
+    // Wait for layout to fully settle, then measure
+    await new Promise((r) => setTimeout(r, TOUR_EXPAND_DELAY));
+    await new Promise((r) => requestAnimationFrame(r));
+    const layout = await measureTourRef(stepDef.ref);
+    setTourStep(next);
+    setTourSpotLayout(layout);
+  }
+
+  function endTour() {
+    setShowTour(false);
+    setTourStep(0);
+    setTourSpotLayout(null);
+    AsyncStorage.setItem(STORAGE_KEYS.TOUR_VERSION, String(TOUR_VERSION)).catch(() => {});
+  }
+
+  // Check if tour should show (first launch or new tour version)
+  useEffect(() => {
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(STORAGE_KEYS.TOUR_VERSION);
+        if (!seen || Number(seen) < TOUR_VERSION) {
+          setTimeout(() => startTour(), TOUR_LAUNCH_DELAY);
+        }
+      } catch (_) {
+        // Non-critical
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Location is deferred to first "Fork It" tap via ensureLocation() on all
   // platforms for a consistent, contextual permission prompt experience.
 
@@ -939,7 +1124,10 @@ export default function App() {
     if (hasLocationPerm && coords) return coords;
     const { status } = await requestLocationPermission();
     if (status !== 'granted') {
-      showAlert('Location needed', 'Please enable location permissions in Settings to use ForkIt!');
+      showAlert(
+        'Location needed',
+        'Please enable location permissions in Settings to use ForkFate!',
+      );
       return null;
     }
     setHasLocationPerm(true);
@@ -1178,9 +1366,9 @@ export default function App() {
       }
 
       const raw = await fetchNearbyPlaces(currentCoords);
+      maybeNudgeWalkMode(raw.length);
       const results = filterAndEnrichResults(raw);
       setPoolCount(results.length);
-      maybeNudgeWalkMode(results.length);
 
       if (!results.length) {
         await haptics.notificationAsync(haptics.NotificationFeedbackType.Warning);
@@ -1264,7 +1452,7 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={styles.flex1}>
+    <SafeAreaView style={[styles.flex1, styles.safeAreaDark]}>
       <LinearGradient colors={THEME.background} style={styles.flex1}>
         <ScrollView
           ref={scrollViewRef}
@@ -1303,14 +1491,16 @@ export default function App() {
               {statusLine} <Text style={styles.heroBold}>✨</Text>
             </Text>
 
-            <PrimaryButton
-              label={loading ? 'Picking…' : 'Just Fork It'}
-              onPress={forkIt}
-              disabled={loading}
-              loading={loading}
-              spinDeg={spinDeg}
-              bounceY={bounceY}
-            />
+            <View ref={tourRefs.forkBtn} collapsable={false}>
+              <PrimaryButton
+                label={loading ? 'Picking…' : 'Just fork it.'}
+                onPress={forkIt}
+                disabled={loading}
+                loading={loading}
+                spinDeg={spinDeg}
+                bounceY={bounceY}
+              />
+            </View>
 
             {!!forkingLine && loading ? (
               <Text style={styles.forkingLine}>{forkingLine}</Text>
@@ -1331,6 +1521,8 @@ export default function App() {
 
             {/* Collapsible Filters */}
             <TouchableOpacity
+              ref={tourRefs.filtersToggle}
+              collapsable={false}
               onPress={() => setFiltersExpanded(!filtersExpanded)}
               activeOpacity={0.85}
               style={styles.filtersToggle}
@@ -1355,7 +1547,7 @@ export default function App() {
             {filtersExpanded && (
               <View style={styles.filtersContent}>
                 <Text style={styles.label}>How far?</Text>
-                <View style={styles.row}>
+                <View ref={tourRefs.distanceRow} collapsable={false} style={styles.row}>
                   {(travelMode === 'walk'
                     ? [
                         { v: 0.25, t: '¼ mi' },
@@ -1407,35 +1599,37 @@ export default function App() {
                   }}
                 />
 
-                <Text style={styles.label}>Max damage</Text>
-                <View style={styles.row}>
-                  {[
-                    { v: 1, t: '$' },
-                    { v: 2, t: '$$' },
-                    { v: 3, t: '$$$' },
-                    { v: 4, t: '$$$$' },
-                  ].map((p) => (
-                    <Chip
-                      key={p.v}
-                      label={p.t}
-                      icon="pricetag"
-                      active={maxPrice === p.v}
-                      onPress={() => setMaxPrice(p.v)}
-                    />
-                  ))}
-                </View>
+                <View ref={tourRefs.maxDamageRow} collapsable={false}>
+                  <Text style={styles.label}>Max damage</Text>
+                  <View style={styles.row}>
+                    {[
+                      { v: 1, t: '$' },
+                      { v: 2, t: '$$' },
+                      { v: 3, t: '$$$' },
+                      { v: 4, t: '$$$$' },
+                    ].map((p) => (
+                      <Chip
+                        key={p.v}
+                        label={p.t}
+                        icon="pricetag"
+                        active={maxPrice === p.v}
+                        onPress={() => setMaxPrice(p.v)}
+                      />
+                    ))}
+                  </View>
 
-                <Text style={styles.label}>At least this good</Text>
-                <View style={styles.row}>
-                  {[RATING_LOW, RATING_DEFAULT, RATING_HIGH, RATING_TOP].map((r) => (
-                    <Chip
-                      key={r}
-                      label={`${r}+`}
-                      icon="star"
-                      active={minRating === r}
-                      onPress={() => setMinRating(r)}
-                    />
-                  ))}
+                  <Text style={styles.label}>At least this good</Text>
+                  <View style={styles.row}>
+                    {[RATING_LOW, RATING_DEFAULT, RATING_HIGH, RATING_TOP].map((r) => (
+                      <Chip
+                        key={r}
+                        label={`${r}+`}
+                        icon="star"
+                        active={minRating === r}
+                        onPress={() => setMinRating(r)}
+                      />
+                    ))}
+                  </View>
                 </View>
 
                 <Text style={styles.label}>Cuisine keyword (optional)</Text>
@@ -1455,7 +1649,7 @@ export default function App() {
                   />
                 </View>
 
-                <View style={styles.toggleRow}>
+                <View ref={tourRefs.openNowRow} collapsable={false} style={styles.toggleRow}>
                   <Text style={styles.toggleLabel}>Open now</Text>
                   <Chip
                     label={openNow ? 'ON' : 'OFF'}
@@ -1465,7 +1659,7 @@ export default function App() {
                   />
                 </View>
 
-                <View style={styles.toggleRow}>
+                <View ref={tourRefs.hiddenGemsRow} collapsable={false} style={styles.toggleRow}>
                   <Text style={styles.toggleLabel}>Skip the chains</Text>
                   <Chip
                     label={hiddenGems ? 'ON' : 'OFF'}
@@ -1506,8 +1700,10 @@ export default function App() {
               </View>
             )}
 
-            <View style={styles.featurePills}>
+            <View ref={tourRefs.spotsRow} collapsable={false} style={styles.featurePills}>
               <TouchableOpacity
+                ref={tourRefs.modeToggle}
+                collapsable={false}
                 onPress={() => {
                   const next = travelMode === 'drive' ? 'walk' : 'drive';
                   setTravelMode(next);
@@ -1516,6 +1712,7 @@ export default function App() {
                     setRadiusMiles(WALK_RADIUS_DEFAULT);
                   if (next === 'drive' && radiusMiles < DRIVE_RADIUS_MIN)
                     setRadiusMiles(DRIVE_RADIUS_DEFAULT);
+                  if (next === 'drive') walkSuggestedRef.current = false;
                 }}
                 style={[
                   styles.footerActionBtn,
@@ -1838,15 +2035,17 @@ export default function App() {
                 onPress={() => setShowSupport(true)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
-                accessibilityLabel="Support ForkIt"
+                accessibilityLabel="Support ForkFate"
               >
                 <Ionicons name="cafe-outline" size={18} color={THEME.textHint} />
               </TouchableOpacity>
               <TouchableOpacity
+                ref={tourRefs.infoBtn}
+                collapsable={false}
                 onPress={() => setShowInfo(true)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
-                accessibilityLabel="About ForkIt"
+                accessibilityLabel="About ForkFate"
               >
                 <Ionicons name="information-circle-outline" size={18} color={THEME.textHint} />
               </TouchableOpacity>
@@ -1854,6 +2053,144 @@ export default function App() {
             <Text style={styles.footer}>Life's too short to debate dinner.</Text>
           </View>
         </ScrollView>
+
+        {/* Tour Spotlight Modal */}
+        <Modal
+          visible={showTour}
+          transparent
+          animationType="fade"
+          onRequestClose={endTour}
+          statusBarTranslucent
+        >
+          <View style={styles.tourOverlay} accessibilityViewIsModal>
+            {/* Dark overlay with spotlight cutout */}
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={endTour}
+              accessibilityLabel="Skip tour"
+              accessibilityRole="button"
+            />
+
+            {/* Spotlight ring */}
+            {tourSpotLayout && (
+              <View
+                style={[
+                  styles.tourSpotlight,
+                  {
+                    top: tourSpotLayout.y - TOUR_SPOT_PAD,
+                    left: tourSpotLayout.x - TOUR_SPOT_PAD,
+                    width: tourSpotLayout.width + TOUR_SPOT_PAD * 2,
+                    height: tourSpotLayout.height + TOUR_SPOT_PAD * 2,
+                    borderRadius: TOUR_STEPS[tourStep]?.ref === 'infoBtn' ? 999 : TOUR_SPOT_RADIUS,
+                  },
+                ]}
+                pointerEvents="none"
+              />
+            )}
+
+            {/* Tooltip — positioned near spotlight, or centered if no spotlight */}
+            {(tourSpotLayout || TOUR_STEPS[tourStep]?.mock) && (
+              <View
+                style={[
+                  styles.tourTooltip,
+                  tourSpotLayout
+                    ? TOUR_STEPS[tourStep]?.arrow === 'down'
+                      ? { top: tourSpotLayout.y + tourSpotLayout.height + TOUR_SPOT_PAD * 3 }
+                      : {
+                          top: Math.max(
+                            tourSpotLayout.y - TOUR_TOOLTIP_HEIGHT,
+                            TOUR_TOOLTIP_MIN_TOP,
+                          ),
+                        }
+                    : styles.tourTooltipCentered,
+                ]}
+                pointerEvents="box-none"
+              >
+                {/* Arrow (only when attached to a spotlight) */}
+                {tourSpotLayout && TOUR_STEPS[tourStep]?.arrow && (
+                  <View
+                    style={[
+                      styles.tourArrow,
+                      TOUR_STEPS[tourStep]?.arrow === 'down'
+                        ? styles.tourArrowUp
+                        : styles.tourArrowDown,
+                      {
+                        left: Math.min(
+                          Math.max(
+                            tourSpotLayout.x + tourSpotLayout.width / 2 - TOUR_ARROW_OFFSET,
+                            10,
+                          ),
+                          Dimensions.get('window').width - TOUR_ARROW_OFFSET * 2,
+                        ),
+                      },
+                    ]}
+                  />
+                )}
+                <Text style={styles.tourStepCount}>
+                  {tourStep + 1} of {TOUR_STEP_COUNT}
+                </Text>
+                <Text style={styles.tourTitle}>{TOUR_STEPS[tourStep]?.title}</Text>
+                <Text style={styles.tourDesc}>{TOUR_STEPS[tourStep]?.desc}</Text>
+
+                {/* Mock recipe preview */}
+                {TOUR_STEPS[tourStep]?.mock === 'recipes' && (
+                  <View style={styles.tourMockCard}>
+                    <Text style={styles.tourMockTitle}>Joe's Pizza</Text>
+                    <Text style={styles.tourMockSub}>0.3 mi · $$ · 4.5 ★</Text>
+                    <View style={styles.tourMockDivider} />
+                    <View style={styles.tourMockRow}>
+                      <View style={[styles.tourMockBtn, styles.tourMockYoutube]}>
+                        <Text style={styles.tourMockBtnText}>▶ YouTube</Text>
+                      </View>
+                      <View style={[styles.tourMockBtn, styles.tourMockGoogle]}>
+                        <Text style={styles.tourMockBtnText}>🔍 Google</Text>
+                      </View>
+                      <View style={[styles.tourMockBtn, styles.tourMockAllrecipes]}>
+                        <Text style={styles.tourMockBtnText}>📖 Allrecipes</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {/* Dots */}
+                <View style={styles.tourFooter}>
+                  <View style={styles.tourDots}>
+                    {Array.from({ length: TOUR_STEP_COUNT }).map((_, i) => (
+                      <View
+                        key={i}
+                        style={[styles.tourDot, i === tourStep && styles.tourDotActive]}
+                      />
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    style={styles.tourNextBtn}
+                    onPress={advanceTour}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      tourStep === TOUR_STEP_COUNT - 1 ? 'Finish tour' : 'Next step'
+                    }
+                  >
+                    <Text style={styles.tourNextText}>
+                      {tourStep === TOUR_STEP_COUNT - 1 ? 'Get Forking!' : 'Next'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {tourStep < TOUR_STEP_COUNT - 1 && (
+                  <TouchableOpacity
+                    onPress={endTour}
+                    style={styles.tourSkip}
+                    accessibilityRole="button"
+                    accessibilityLabel="Skip tour"
+                  >
+                    <Text style={styles.tourSkipText}>Skip tour</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        </Modal>
 
         <Modal
           visible={showInfo}
@@ -1903,14 +2240,29 @@ export default function App() {
                   }}
                   scrollEventThrottle={16}
                 >
+                  <TouchableOpacity
+                    style={styles.tourLaunchBtn}
+                    onPress={() => {
+                      setShowInfo(false);
+                      easterEggTaps.current = 0;
+                      setTimeout(() => startTour(), SUPPORT_MODAL_DELAY);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Take a tour of ForkFate features"
+                  >
+                    <Ionicons name="compass-outline" size={16} color={THEME.pop} />
+                    <Text style={styles.tourLaunchText}>Take a Tour</Text>
+                    <Text style={styles.tourLaunchSub}>or read below</Text>
+                  </TouchableOpacity>
+
                   <Text
                     style={[styles.infoHeading, styles.marginTopNone]}
                     accessibilityRole="header"
                   >
-                    How ForkIt! Works
+                    How ForkFate Works
                   </Text>
                   <Text style={styles.infoText}>
-                    ForkIt! uses Google Maps to find restaurants near you based on your filters,
+                    ForkFate uses Google Maps to find restaurants near you based on your filters,
                     then picks one at random - so you never have to debate dinner again.
                   </Text>
 
@@ -1927,7 +2279,7 @@ export default function App() {
                   </Text>
                   <Text style={styles.infoText}>
                     Use cuisine keywords to narrow results (e.g. "pizza", "seafood"). Pick quick-tap
-                    filters for common cravings. ForkIt! also remembers what it already showed you
+                    filters for common cravings. ForkFate also remembers what it already showed you
                     during your session and won't repeat them - resets when you close the app.
                   </Text>
 
@@ -1935,7 +2287,7 @@ export default function App() {
                     Skip the Chains
                   </Text>
                   <Text style={styles.infoText}>
-                    When this is on, ForkIt! filters out common chain restaurants and places with
+                    When this is on, ForkFate filters out common chain restaurants and places with
                     lots of reviews (500+) so you're more likely to discover local spots. Turn it
                     off if you're cool with the usual suspects.
                   </Text>
@@ -1970,7 +2322,7 @@ export default function App() {
                     {'\u2022'} Use "Spots" to add your own places (like Mom's house) to the random
                     pool{'\n'}
                     {'\u2022'} Tap "More Like This" to instantly search for more of the same cuisine
-                    - if ForkIt! picks a Thai place, it'll find other Thai spots nearby{'\n'}
+                    - if ForkFate picks a Thai place, it'll find other Thai spots nearby{'\n'}
                     {'\u2022'} Your favorites, blocked list, and custom spots are saved on your
                     device
                   </Text>
@@ -1994,10 +2346,10 @@ export default function App() {
                       style={[styles.infoHeading, styles.infoSupportHeading]}
                       accessibilityRole="header"
                     >
-                      {'\u2615'} Support ForkIt!
+                      {'\u2615'} Support ForkFate
                     </Text>
                     <Text style={styles.infoText}>
-                      Born in the heat of a dinner battle royale. Maintained by coffee. If ForkIt!
+                      Born in the heat of a dinner battle royale. Maintained by coffee. If ForkFate
                       saved you from the "I don't know" spiral, contribute to the addiction.
                     </Text>
                     <TouchableOpacity
@@ -2018,7 +2370,7 @@ export default function App() {
                     >
                       <Ionicons name="cafe" size={16} color={THEME.accent} />
                       <Text style={[styles.supportBtnText, { color: THEME.accent }]}>
-                        Support ForkIt!
+                        Support ForkFate
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -2083,7 +2435,7 @@ export default function App() {
                 style={[styles.infoHeading, styles.supportHeadingCenter]}
                 accessibilityRole="header"
               >
-                Support ForkIt!
+                Support ForkFate
               </Text>
               <Text style={[styles.infoText, styles.supportSubCenter]}>
                 Born in the heat of a dinner battle royale. Maintained by coffee.{'\n'}
@@ -2121,7 +2473,7 @@ export default function App() {
               </TouchableOpacity>
 
               <View style={styles.supportFooterRow}>
-                <Text style={styles.supportBrandText}>ForkIt</Text>
+                <Text style={styles.supportBrandText}>ForkFate</Text>
                 <ForkIcon size={16} color={THEME.accent} />
               </View>
             </View>
@@ -3133,6 +3485,7 @@ const styles = StyleSheet.create({
   opacity05: { opacity: 0.5 },
   animatedForkWrap: { marginRight: 10 },
   flex1: { flex: 1 },
+  safeAreaDark: { backgroundColor: THEME.dark },
   loadingContainer: { flex: 1, backgroundColor: THEME.dark },
   loadingCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   iconNudge: { marginLeft: -5, marginTop: -6 },
@@ -3193,4 +3546,191 @@ const styles = StyleSheet.create({
   modalContentHeight: { maxHeight: SCREEN_HEIGHT * MODAL_CONTENT_RATIO },
   modalListHeight: { maxHeight: SCREEN_HEIGHT * MODAL_LIST_RATIO },
   modalSpotsHeight: { maxHeight: SCREEN_HEIGHT * MODAL_SPOTS_RATIO },
+
+  // Tour Spotlight
+  tourOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: THEME.tourOverlay,
+    zIndex: 2000,
+  },
+  tourSpotlight: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: THEME.tourSpotBorder,
+    backgroundColor: THEME.tourSpotBg,
+    zIndex: 2001,
+  },
+  tourTooltip: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    backgroundColor: THEME.tourCard,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: THEME.tourCardBorder,
+    zIndex: 2002,
+    shadowColor: THEME.black,
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  tourArrow: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    backgroundColor: THEME.tourCard,
+    borderWidth: 1,
+    borderColor: THEME.tourCardBorder,
+    transform: [{ rotate: '45deg' }],
+  },
+  tourArrowUp: {
+    top: -8,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+  },
+  tourArrowDown: {
+    bottom: -8,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+  },
+  tourStepCount: {
+    fontSize: 10,
+    color: THEME.tourGold,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  tourTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: THEME.white,
+    marginBottom: 6,
+  },
+  tourDesc: {
+    fontSize: 12.5,
+    color: THEME.tourText,
+    lineHeight: 19,
+    marginBottom: 10,
+  },
+  tourFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  tourDots: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  tourDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: THEME.tourDotBg,
+  },
+  tourDotActive: {
+    backgroundColor: THEME.tourGold,
+    width: 16,
+    borderRadius: 3,
+  },
+  tourNextBtn: {
+    backgroundColor: THEME.tourBtnBg,
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+    borderRadius: 999,
+  },
+  tourNextText: {
+    color: THEME.tourBtnText,
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  tourSkip: {
+    alignSelf: 'center',
+    marginTop: 8,
+  },
+  tourSkipText: {
+    fontSize: 11,
+    color: THEME.tourSkipText,
+  },
+  tourTooltipCentered: {
+    top: '25%',
+  },
+  tourMockCard: {
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: THEME.borderFaint,
+  },
+  tourMockTitle: {
+    color: THEME.tourGold,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  tourMockSub: {
+    color: THEME.textMuted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  tourMockDivider: {
+    height: 1,
+    backgroundColor: THEME.borderDim,
+    marginVertical: 8,
+  },
+  tourMockRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  tourMockBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    flex: 1,
+    alignItems: 'center',
+  },
+  tourMockYoutube: {
+    backgroundColor: THEME.tourMockYoutube,
+  },
+  tourMockGoogle: {
+    backgroundColor: THEME.tourMockGoogle,
+  },
+  tourMockAllrecipes: {
+    backgroundColor: THEME.tourMockAllrecipes,
+  },
+  tourMockBtnText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: THEME.textSecondary,
+  },
+  tourLaunchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: THEME.tourLaunchBg,
+    borderWidth: 1,
+    borderColor: THEME.tourLaunchBorder,
+    marginBottom: 14,
+  },
+  tourLaunchText: {
+    color: THEME.pop,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  tourLaunchSub: {
+    color: THEME.tourSkipText,
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 'auto',
+  },
 });
