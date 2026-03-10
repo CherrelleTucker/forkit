@@ -1,7 +1,7 @@
-# ForkFate — Project Guide
+# ForkIt! — Project Guide
 
 ## Overview
-Random restaurant picker app (formerly ForkIt!). Users tap "Just fork it." to get a random nearby restaurant suggestion based on their location and optional filters (keyword, radius, price, rating, open now, hidden gems).
+Random restaurant picker app. Users tap "Fork It" to get a random nearby restaurant suggestion based on their location and optional filters (keyword, radius, price, rating, open now, hidden gems).
 
 ## Architecture
 
