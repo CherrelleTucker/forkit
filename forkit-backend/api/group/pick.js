@@ -203,7 +203,7 @@ export default async function handler(req, res) {
 
     // Pick a random restaurant
     const picked = results[Math.floor(Math.random() * results.length)];
-    await saveResult(code.trim(), picked);
+    await saveResult(code.trim(), picked, mergedFilters);
 
     return res.status(200).json({
       status: 'done',

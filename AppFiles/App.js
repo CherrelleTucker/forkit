@@ -22,6 +22,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Purchases from 'react-native-purchases';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, G } from 'react-native-svg';
 
@@ -72,7 +73,7 @@ const DEBOUNCE_DELAY = 350;
 const THROTTLE_WINDOW = 60000;
 const THROTTLE_MAX_TAPS = 8;
 const RECENTLY_SHOWN_MAX = 10;
-const POOL_STALE_MS = 3600000; // 1 hour — refetch pool after this
+const POOL_STALE_MS = 14400000; // 4 hours — refetch pool after this
 const WALK_RESULTS_THRESHOLD = 25;
 const CLOSING_SOON_EXCLUDE_MIN = 30;
 const CLOSING_SOON_WARN_MIN = 60;
@@ -144,7 +145,8 @@ const STORAGE_KEYS = {
   API_FETCH_COUNT: '@forkit_api_fetches',
   SAVED_LOCATIONS: '@forkit_saved_locations',
   FORK_USAGE: '@forkit_fork_usage',
-  PRO_EXPIRES: '@forkit_pro_expires',
+  // PRO_EXPIRES removed — Pro status now managed by RevenueCat
+  TOUR_VERSION: '@forkit_tour_version',
 };
 
 // Tip prompt — show after this many API fetches, then every N more
@@ -152,12 +154,94 @@ const TIP_PROMPT_FIRST = 50;
 const TIP_PROMPT_INTERVAL = 75;
 
 // Free tier limits — resets on the 1st of each month
-const FREE_SOLO_FORKS = 10;
+const FREE_SOLO_FORKS = 20;
 const FREE_GROUP_FORKS = 1;
-const FREE_FORKS_LOW_THRESHOLD = 5;
+const FREE_FORKS_NUDGE_THRESHOLD = 10; // soft Pro nudge after this many
 const PRO_PRICE_LABEL = '$1.99/month';
-const PRO_DURATION_DAYS = 30;
-const MS_PER_DAY = 86400000;
+const RC_APPLE_KEY = 'appl_MTGpBmaAXfqTCRdfHnprPbzEgGZ';
+const RC_GOOGLE_KEY = 'goog_IygUWURdGYnquZqXoyxBoNmYDua';
+const RC_ENTITLEMENT_ID = 'pro';
+
+// Tour
+const TOUR_VERSION = 2; // Bump to re-show tour after major feature additions
+const TOUR_STEP_COUNT = 11;
+const TOUR_LAUNCH_DELAY = 800;
+const TOUR_EXPAND_DELAY = 350;
+const TOUR_TOOLTIP_MIN_TOP = 40;
+const TOUR_TOOLTIP_HEIGHT = 195;
+const TOUR_ARROW_OFFSET = 30;
+const TOUR_SPOT_PAD = 6;
+const TOUR_SPOT_RADIUS = 14;
+const TOUR_SCROLL_SETTLE_MS = 600;
+const TOUR_STEPS = [
+  {
+    ref: 'forkBtn',
+    title: 'Just fork it.',
+    desc: "Tap the button and we'll pick a spot. Each tap re-rolls from the same pool for free \u2014 a new search only counts when your filters change or the pool refreshes.",
+    arrow: 'down',
+  },
+  {
+    ref: 'modeToggle',
+    title: 'Walk vs Drive',
+    desc: "In a city? Switch to walk mode for spots you can stroll to. If we find way more (or fewer) results than expected, we'll suggest switching modes.",
+    arrow: 'up',
+  },
+  {
+    ref: 'filtersToggle',
+    title: 'Filters',
+    desc: 'Tap here to open filters \u2014 distance, price, rating, cuisine, and more. You can use both keyword fields together \u2014 search "tacos" and exclude "Taco Bell." Just keep in mind: we can only filter by what restaurants list on their Google profile.',
+    arrow: 'up',
+    expandFilters: true,
+  },
+  {
+    ref: 'distanceRow',
+    title: 'How Far?',
+    desc: 'Pick your distance. These change based on walk or drive mode. Or tap the pin to search near a custom address.',
+    arrow: 'up',
+  },
+  {
+    ref: 'maxDamageRow',
+    title: 'Max Damage & At Least This Good',
+    desc: 'These filters are inclusive. $$ means \u201Cup to $$.\u201D 3 stars means \u201C3 stars and above.\u201D You get what you pick and everything below/above.',
+    arrow: 'up',
+  },
+  {
+    ref: 'openNowRow',
+    title: 'Open Now',
+    desc: "Only shows places that'll be open for at least another hour. No rushing to beat a closing kitchen.",
+    arrow: 'up',
+  },
+  {
+    ref: 'hiddenGemsRow',
+    title: 'Skip the Chains',
+    desc: 'We filter out chains two ways: a list of known chain names, and any place with 500+ reviews (a good sign it\u2019s a big operation). What\u2019s left are more likely to be local spots with smaller audiences.',
+    arrow: 'up',
+  },
+  {
+    ref: 'spotsRow',
+    title: '+ Spots & Your Lists',
+    desc: "Add your own spots \u2014 Mom's house, that taco truck, anywhere. Save favorites \u2764\uFE0F and block \uD83D\uDEAB specific locations or entire restaurant names so they never come up.",
+    arrow: 'up',
+  },
+  {
+    ref: 'forkAroundBtn',
+    title: 'Fork Around. Find Out.',
+    desc: 'Indecisive group? Start a session, share a code, and everyone sets their own filters. We\u2019ll pick from the Venn diagram of what works for all of you.',
+    arrow: 'up',
+  },
+  {
+    ref: 'infoBtn',
+    title: 'Info & Support',
+    desc: "Tap \u2139\uFE0F anytime for details on how everything works, take this tour again, or support ForkIt!'s development.",
+    arrow: 'up',
+  },
+  {
+    ref: null,
+    title: 'Why not all free?',
+    desc: "Google Maps promotes places with ad budgets \u2014 which crowds out the best jamaican food made in the back of a gas station you've ever tasted. We bypass that by pulling raw data from Google's API, and Google charges for those calls. Your 20 free searches/month and 1 Fork Around are on us. Pro ($1.99/month) removes all limits. Re-rolls within 4 hours are always free \u2014 only filter changes or an expired pool count as a new search.",
+    arrow: null,
+  },
+];
 
 // Fork Around
 const GROUP_MODAL_CLOSE_DELAY = 300;
@@ -239,6 +323,24 @@ const THEME = {
   surfaceDropdown: 'rgba(26,20,16,0.98)',
   surfaceFavAction: 'rgba(255,255,255,0.04)',
   transparent: 'transparent',
+
+  // Tour colors
+  tourOverlay: 'rgba(0,0,0,0.75)',
+  tourSpotBorder: 'rgba(255,215,0,0.6)',
+  tourSpotBg: 'rgba(255,215,0,0.06)',
+  tourCard: '#1C1C2E',
+  tourCardBorder: '#2a2a3e',
+  tourGold: '#FFD700',
+  tourText: '#aaaaaa',
+  tourDotBg: '#333333',
+  tourBtnBg: '#FFD700',
+  tourBtnText: '#0B0B0F',
+  tourSkipText: '#666666',
+  tourLaunchBg: 'rgba(45,212,191,0.1)',
+  tourLaunchBorder: 'rgba(45,212,191,0.3)',
+  tourMockYoutube: 'rgba(255,0,0,0.15)',
+  tourMockGoogle: 'rgba(66,133,244,0.15)',
+  tourMockAllrecipes: 'rgba(255,165,0,0.15)',
 };
 
 const FORKING_LINES = [
@@ -692,7 +794,8 @@ function GlassCard({ title, icon, children, accent }) {
 }
 
 /**
- * Displays usage hint or paywall prompt based on remaining free forks.
+ * Displays a soft Pro nudge or hard paywall based on usage.
+ * No countdown — users should feel abundant, not rationed.
  * @param {object} props - Component props
  * @param {string} props.mode - 'solo' or 'group'
  * @param {{solo: number, group: number}} props.usage - current usage counts
@@ -701,24 +804,22 @@ function GlassCard({ title, icon, children, accent }) {
  */
 function UsageHint({ mode, usage, onPaywall }) {
   if (mode === 'solo') {
-    const soloLeft = FREE_SOLO_FORKS - usage.solo;
-    if (soloLeft <= FREE_FORKS_LOW_THRESHOLD && soloLeft > 0) {
-      return (
-        <Text style={styles.usageHint}>
-          {soloLeft} free fork{soloLeft !== 1 ? 's' : ''} left this month
-        </Text>
-      );
-    }
-    if (soloLeft <= 0) {
+    if (usage.solo >= FREE_SOLO_FORKS) {
       return (
         <TouchableOpacity onPress={() => onPaywall('solo')} activeOpacity={0.7}>
-          <Text style={styles.usageHintAccent}>Upgrade to Pro for unlimited forks</Text>
+          <Text style={styles.usageHintAccent}>Upgrade to Pro for unlimited searches</Text>
+        </TouchableOpacity>
+      );
+    }
+    if (usage.solo >= FREE_FORKS_NUDGE_THRESHOLD) {
+      return (
+        <TouchableOpacity onPress={() => onPaywall('solo')} activeOpacity={0.7}>
+          <Text style={styles.usageHint}>Enjoying ForkIt? Go Pro for unlimited searches</Text>
         </TouchableOpacity>
       );
     }
   } else {
-    const groupLeft = FREE_GROUP_FORKS - usage.group;
-    if (groupLeft <= 0) {
+    if (usage.group >= FREE_GROUP_FORKS) {
       return (
         <TouchableOpacity onPress={() => onPaywall('group')} activeOpacity={0.7}>
           <Text style={styles.usageHintAccent}>Upgrade to Pro for unlimited group sessions</Text>
@@ -806,20 +907,12 @@ function getCloseModalConfig(groupStep, isHost) {
 
 /**
  * Parse raw AsyncStorage values into typed state. Returns only fields that had data.
- * @param {Array} raw - array of [favData, blockData, customData, travelData, fetchCountData, savedLocsData, usageData, proData]
+ * @param {Array} raw - array of [favData, blockData, customData, travelData, fetchCountData, savedLocsData, usageData]
  * @returns {object} parsed state fields
  */
 function parseStoredState(raw) {
-  const [
-    favData,
-    blockData,
-    customData,
-    travelData,
-    fetchCountData,
-    savedLocsData,
-    usageData,
-    proData,
-  ] = raw;
+  const [favData, blockData, customData, travelData, fetchCountData, savedLocsData, usageData] =
+    raw;
   const state = {};
   if (favData) state.favorites = JSON.parse(favData).map(migrateFavorite);
   if (blockData) state.blockedIds = JSON.parse(blockData);
@@ -834,7 +927,6 @@ function parseStoredState(raw) {
       state.forkUsage = parsed;
     }
   }
-  if (proData) state.proExpiresAt = parseInt(proData, 10) || 0;
   return state;
 }
 
@@ -849,12 +941,14 @@ function FeaturePills({
   onShowFavorites,
   onShowBlocked,
   onShowCustomPlaces,
+  tourRefsExt,
 }) {
   const isWalk = travelMode === 'walk';
   const isGroup = forkMode === 'group';
   return (
     <View style={styles.featurePills}>
       <TouchableOpacity
+        ref={tourRefsExt?.modeToggle}
         onPress={onToggleTravel}
         style={[
           styles.footerActionBtn,
@@ -1036,6 +1130,8 @@ function GroupParticipantRow({ participant }) {
  * @param {Array} props.savedLocations - User's saved locations
  * @param {Function} props.saveLocation - Save a new location
  * @param {Function} props.deleteSavedLocation - Delete a saved location
+ * @param {Array} props.customPlaces - User's Your Spots list
+ * @param {Function} props.setCustomPlaces - Setter for customPlaces
  * @param {Array} props.groupParticipants - List of participants
  * @param {object|null} props.groupResult - Picked restaurant result
  * @param {boolean} props.groupLoading - Whether a group action is in progress
@@ -1063,7 +1159,9 @@ function GroupForkModal({
   groupHostRadius,
   savedLocations,
   saveLocation,
-  deleteSavedLocation,
+  deleteSavedLocation: _deleteSavedLocation,
+  customPlaces,
+  setCustomPlaces,
   groupParticipants,
   groupResult,
   groupLoading,
@@ -1114,24 +1212,49 @@ function GroupForkModal({
     setGLocSuggestions([]);
     if (gLocDebounceRef.current) clearTimeout(gLocDebounceRef.current);
     if (text.trim().length >= 1) {
-      // Check saved locations immediately (no debounce)
+      // Check saved locations + Your Spots immediately (no debounce)
       const q = text.trim().toLowerCase();
       const savedMatches = savedLocations
         .filter((s) => s.label.toLowerCase().includes(q))
         .map((s) => ({ ...s, isSaved: true, description: s.label, mainText: s.label }));
-      if (savedMatches.length > 0) {
-        setGLocSuggestions(savedMatches);
+      const spotMatches = customPlaces
+        .filter(
+          (cp) =>
+            cp.name.toLowerCase().includes(q) &&
+            !savedMatches.some((sm) => sm.label.toLowerCase() === cp.name.toLowerCase()),
+        )
+        .map((cp) => ({
+          ...cp,
+          isCustomSpot: true,
+          description: cp.vicinity ? `${cp.name} — ${cp.vicinity}` : cp.name,
+          mainText: cp.name,
+        }));
+      const localMatches = [...savedMatches, ...spotMatches];
+      if (localMatches.length > 0) {
+        setGLocSuggestions(localMatches);
       }
     }
     if (text.trim().length >= 3) {
       gLocDebounceRef.current = setTimeout(async () => {
         const { suggestions } = await fetchAddressSuggestions(text, null);
-        // Merge: saved matches first, then API results
+        // Merge: saved locations + Your Spots first, then API results
         const q = text.trim().toLowerCase();
         const savedMatches = savedLocations
           .filter((s) => s.label.toLowerCase().includes(q))
           .map((s) => ({ ...s, isSaved: true, description: s.label, mainText: s.label }));
-        setGLocSuggestions([...savedMatches, ...suggestions]);
+        const spotMatches = customPlaces
+          .filter(
+            (cp) =>
+              cp.name.toLowerCase().includes(q) &&
+              !savedMatches.some((sm) => sm.label.toLowerCase() === cp.name.toLowerCase()),
+          )
+          .map((cp) => ({
+            ...cp,
+            isCustomSpot: true,
+            description: cp.vicinity ? `${cp.name} — ${cp.vicinity}` : cp.name,
+            mainText: cp.name,
+          }));
+        setGLocSuggestions([...savedMatches, ...spotMatches, ...suggestions]);
       }, DEBOUNCE_DELAY);
     }
   }
@@ -1151,6 +1274,32 @@ function GroupForkModal({
         label: suggestion.label,
       });
       setGroupLocationName(suggestion.label);
+      return;
+    }
+    if (suggestion.isCustomSpot) {
+      setGLocQuery(suggestion.name);
+      setGroupLocationName(suggestion.name);
+      if (suggestion.vicinity) {
+        const { suggestions: addrResults } = await fetchAddressSuggestions(
+          suggestion.vicinity,
+          null,
+        );
+        if (addrResults.length > 0) {
+          const details = await getPlaceDetails(addrResults[0].placeId);
+          if (details?.geometry?.location) {
+            setGLocCoords({
+              latitude: details.geometry.location.lat,
+              longitude: details.geometry.location.lng,
+              label: suggestion.name,
+            });
+            return;
+          }
+        }
+      }
+      showAlert(
+        'No Address',
+        'This spot doesn\u2019t have an address. Search for one to set the location.',
+      );
       return;
     }
     setGLocQuery(suggestion.description);
@@ -1311,17 +1460,25 @@ function GroupForkModal({
 
           {groupStep === 'menu' && (
             <View>
-              <Text
-                style={[styles.infoHeading, styles.supportHeadingCenter]}
-                accessibilityRole="header"
-              >
-                Fork Around
-              </Text>
+              <View style={styles.groupHeaderRow}>
+                <Text
+                  style={[
+                    styles.infoHeading,
+                    styles.supportHeadingCenter,
+                    styles.groupHeaderOrange,
+                  ]}
+                  accessibilityRole="header"
+                >
+                  Fork Around.
+                </Text>
+                <Text
+                  style={[styles.infoHeading, styles.supportHeadingCenter, styles.groupHeaderTeal]}
+                >
+                  Find Out.
+                </Text>
+              </View>
               <Text style={[styles.infoText, styles.supportSubCenter]}>
-                Fork around and find out.
-              </Text>
-              <Text style={[styles.infoText, styles.supportSubCenter]}>
-                Pick a restaurant with friends.{'\n'}Set your filters, and let fate decide.
+                Pick a restaurant with friends.
               </Text>
 
               <TextInput
@@ -1334,55 +1491,6 @@ function GroupForkModal({
                 autoCapitalize="words"
                 accessibilityLabel="Your display name"
               />
-
-              {savedLocations.length > 0 && (
-                <View style={styles.marginTop8}>
-                  <Text style={styles.groupFilterLabel}>Saved Spots</Text>
-                  <View style={styles.groupPillRow}>
-                    {savedLocations.map((s) => (
-                      <TouchableOpacity
-                        key={s.label}
-                        style={[
-                          styles.groupPill,
-                          gLocCoords?.label === s.label && styles.groupPillActive,
-                        ]}
-                        onPress={() => {
-                          setGLocCoords({
-                            latitude: s.latitude,
-                            longitude: s.longitude,
-                            label: s.label,
-                          });
-                          setGLocQuery(s.label);
-                          setGroupLocationName(s.label);
-                          setGLocSuggestions([]);
-                        }}
-                        onLongPress={() => {
-                          showAlert('Remove Spot?', `Delete "${s.label}" from saved spots?`, [
-                            { text: 'Cancel', style: 'cancel' },
-                            {
-                              text: 'Delete',
-                              style: 'destructive',
-                              onPress: () => deleteSavedLocation(s.label),
-                            },
-                          ]);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Use saved location ${s.label}`}
-                        accessibilityHint="Long press to delete"
-                      >
-                        <Text
-                          style={[
-                            styles.groupPillText,
-                            gLocCoords?.label === s.label && styles.groupPillTextActive,
-                          ]}
-                        >
-                          {s.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
 
               <TextInput
                 style={[styles.groupInput, styles.marginTop8]}
@@ -1398,14 +1506,22 @@ function GroupForkModal({
                 <View style={styles.groupLocSuggestions}>
                   {gLocSuggestions.map((s) => (
                     <TouchableOpacity
-                      key={s.isSaved ? `saved-${s.label}` : s.placeId}
+                      key={
+                        s.isSaved
+                          ? `saved-${s.label}`
+                          : s.isCustomSpot
+                            ? `spot-${s.place_id}`
+                            : s.placeId
+                      }
                       style={styles.groupLocSuggestionRow}
                       onPress={() => selectGroupLocation(s)}
                       accessibilityRole="button"
                     >
-                      {s.isSaved && <Ionicons name="bookmark" size={14} color={THEME.pop} />}
+                      {(s.isSaved || s.isCustomSpot) && (
+                        <Ionicons name="bookmark" size={14} color={THEME.pop} />
+                      )}
                       <Text style={styles.groupLocSuggestionText} numberOfLines={1}>
-                        {s.isSaved ? ` ${s.description}` : s.description}
+                        {s.isSaved || s.isCustomSpot ? ` ${s.description}` : s.description}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1430,22 +1546,32 @@ function GroupForkModal({
                       <Ionicons name="close-circle" size={16} color={THEME.textHint} />
                     </TouchableOpacity>
                   </View>
-                  {!savedLocations.some((s) => s.label === gLocCoords.label) && (
-                    <TouchableOpacity
-                      style={styles.groupSaveSpotBtn}
-                      onPress={() => saveLocation(gLocCoords)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Save this location for future use"
-                    >
-                      <Ionicons name="bookmark-outline" size={14} color={THEME.pop} />
-                      <Text style={styles.groupSaveSpotText}>Save this spot</Text>
-                    </TouchableOpacity>
-                  )}
+                  {!savedLocations.some((s) => s.label === gLocCoords.label) &&
+                    !customPlaces.some(
+                      (cp) => cp.name.toLowerCase() === gLocCoords.label.toLowerCase(),
+                    ) && (
+                      <TouchableOpacity
+                        style={styles.groupSaveSpotBtn}
+                        onPress={() => {
+                          addCustomPlace(gLocCoords.label, gLocQuery || gLocCoords.label, {
+                            notes: '',
+                            currentCustom: customPlaces,
+                            setCustom: setCustomPlaces,
+                          });
+                          saveLocation(gLocCoords);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Save this location to Your Spots"
+                      >
+                        <Ionicons name="bookmark-outline" size={14} color={THEME.pop} />
+                        <Text style={styles.groupSaveSpotText}>Save to Your Spots</Text>
+                      </TouchableOpacity>
+                    )}
                 </View>
               ) : (
                 <Text style={styles.groupHintText}>
-                  {savedLocations.length > 0
-                    ? 'Tap a saved spot or search a new address.'
+                  {customPlaces.length > 0
+                    ? 'Type a spot name or search an address. Leave blank for GPS.'
                     : 'Search an address or leave blank to use your GPS.'}
                 </Text>
               )}
@@ -1460,12 +1586,16 @@ function GroupForkModal({
                 autoCapitalize="words"
                 accessibilityLabel="Friendly name for your location"
               />
-              <Text style={styles.groupHintText}>
+              <Text style={[styles.groupHintText, styles.groupHintTextLast]}>
                 Friends will see this so they know where you{'\u2019'}re searching.
               </Text>
 
               <TouchableOpacity
-                style={[styles.supportBtn, { backgroundColor: THEME.accent }]}
+                style={[
+                  styles.supportBtn,
+                  { backgroundColor: THEME.accent },
+                  styles.groupHostBtnGap,
+                ]}
                 onPress={() => groupCreate(gLocCoords)}
                 disabled={groupLoading}
                 accessibilityRole="button"
@@ -1797,9 +1927,26 @@ export default function App() {
   const locationDebounceRef = useRef(null);
   const easterEggTaps = useRef(0);
 
+  // Tour
+  const [showTour, setShowTour] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
+  const [tourSpotLayout, setTourSpotLayout] = useState(null);
+  const tourRefs = {
+    forkBtn: useRef(null),
+    modeToggle: useRef(null),
+    filtersToggle: useRef(null),
+    distanceRow: useRef(null),
+    maxDamageRow: useRef(null),
+    openNowRow: useRef(null),
+    hiddenGemsRow: useRef(null),
+    spotsRow: useRef(null),
+    forkAroundBtn: useRef(null),
+    infoBtn: useRef(null),
+  };
+
   // Usage tracking & Pro status
   const [forkUsage, setForkUsage] = useState({ solo: 0, group: 0, month: 0, year: 0 });
-  const [proExpiresAt, setProExpiresAt] = useState(0);
+  const [isProActive, setIsProActive] = useState(false);
 
   // Fork Around state
   const [showGroupModal, setShowGroupModal] = useState(false);
@@ -1903,7 +2050,6 @@ export default function App() {
           AsyncStorage.getItem(STORAGE_KEYS.API_FETCH_COUNT),
           AsyncStorage.getItem(STORAGE_KEYS.SAVED_LOCATIONS),
           AsyncStorage.getItem(STORAGE_KEYS.FORK_USAGE),
-          AsyncStorage.getItem(STORAGE_KEYS.PRO_EXPIRES),
         ]);
         const s = parseStoredState(raw);
         if (s.favorites) {
@@ -1921,11 +2067,141 @@ export default function App() {
         if (s.fetchCount) apiFetchCountRef.current = s.fetchCount;
         if (s.savedLocations) setSavedLocations(s.savedLocations);
         if (s.forkUsage) setForkUsage(s.forkUsage);
-        if (s.proExpiresAt) setProExpiresAt(s.proExpiresAt);
       } catch (_) {
         // Storage read failures are non-critical — app works with defaults
       }
     })();
+  }, []);
+
+  // Initialize RevenueCat and listen for subscription changes
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const initRC = async () => {
+      try {
+        const apiKey = Platform.OS === 'ios' ? RC_APPLE_KEY : RC_GOOGLE_KEY;
+        await Purchases.configure({ apiKey });
+        const customerInfo = await Purchases.getCustomerInfo();
+        setIsProActive(typeof customerInfo.entitlements.active[RC_ENTITLEMENT_ID] !== 'undefined');
+      } catch (_) {
+        // RevenueCat init failure is non-critical — free tier still works
+      }
+    };
+    initRC();
+    const listener = Purchases.addCustomerInfoUpdateListener((info) => {
+      setIsProActive(typeof info.entitlements.active[RC_ENTITLEMENT_ID] !== 'undefined');
+    });
+    return () => listener.remove();
+  }, []);
+
+  // ──── Tour functions ────
+
+  function measureTourRef(refName) {
+    return new Promise((resolve) => {
+      const ref = tourRefs[refName];
+      if (!ref?.current?.measureInWindow) {
+        resolve(null);
+        return;
+      }
+      ref.current.measureInWindow((x, y, width, height) => {
+        resolve(width === 0 && height === 0 ? null : { x, y, width, height });
+      });
+    });
+  }
+
+  async function startTour() {
+    setTourStep(0);
+    setFiltersExpanded(false);
+    const layout = await measureTourRef('forkBtn');
+    setTourSpotLayout(layout);
+    setShowTour(true);
+  }
+
+  async function goToTourStep(target) {
+    if (target < 0 || target >= TOUR_STEP_COUNT) return;
+
+    const stepDef = TOUR_STEPS[target];
+
+    // Expand filters if needed for this step
+    const needsFilters =
+      stepDef.expandFilters ||
+      ['distanceRow', 'maxDamageRow', 'openNowRow', 'hiddenGemsRow'].includes(stepDef.ref);
+    if (needsFilters && !filtersExpanded) {
+      setFiltersExpanded(true);
+    } else if (
+      !needsFilters &&
+      filtersExpanded &&
+      ['forkBtn', 'modeToggle'].includes(stepDef.ref)
+    ) {
+      setFiltersExpanded(false);
+    }
+
+    // Switch to group mode for forkAroundBtn step, solo for others
+    if (stepDef.ref === 'forkAroundBtn') {
+      setForkMode('group');
+    } else {
+      setForkMode('solo');
+    }
+
+    // Scroll to bottom for elements below the fold, top for elements above
+    const needsScroll = ['spotsRow', 'forkAroundBtn', 'infoBtn'].includes(stepDef.ref);
+    if (needsScroll && scrollViewRef.current) {
+      scrollViewRef.current.scrollToEnd({ animated: true });
+    } else if (!needsScroll && scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+    }
+
+    // Steps with no ref — center the tooltip
+    if (!stepDef.ref) {
+      setTourStep(target);
+      setTourSpotLayout(null);
+      return;
+    }
+
+    // Wait for layout/scroll to fully settle, then measure
+    await new Promise((r) =>
+      setTimeout(r, needsScroll ? TOUR_SCROLL_SETTLE_MS : TOUR_EXPAND_DELAY),
+    );
+    await new Promise((r) => requestAnimationFrame(r));
+    const layout = await measureTourRef(stepDef.ref);
+    setTourStep(target);
+    setTourSpotLayout(layout);
+  }
+
+  function advanceTour() {
+    if (tourStep + 1 >= TOUR_STEP_COUNT) {
+      endTour();
+      return;
+    }
+    goToTourStep(tourStep + 1);
+  }
+
+  function retreatTour() {
+    if (tourStep > 0) goToTourStep(tourStep - 1);
+  }
+
+  function endTour() {
+    setShowTour(false);
+    setTourStep(0);
+    setTourSpotLayout(null);
+    setForkMode('solo');
+    setFiltersExpanded(false);
+    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    AsyncStorage.setItem(STORAGE_KEYS.TOUR_VERSION, String(TOUR_VERSION)).catch(() => {});
+  }
+
+  // Check if tour should show (first launch or new tour version)
+  useEffect(() => {
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(STORAGE_KEYS.TOUR_VERSION);
+        if (!seen || Number(seen) < TOUR_VERSION) {
+          setTimeout(() => startTour(), TOUR_LAUNCH_DELAY);
+        }
+      } catch (_) {
+        // Non-critical
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Location is deferred to first "Fork It" tap via ensureLocation() on all
@@ -2419,7 +2695,7 @@ export default function App() {
    * @returns {boolean} true if Pro is active
    */
   function isPro() {
-    return proExpiresAt > Date.now();
+    return isProActive;
   }
 
   /**
@@ -2470,28 +2746,56 @@ export default function App() {
    * Show the upgrade paywall dialog.
    * @param {'solo' | 'group'} type - which limit was hit
    */
-  function showPaywall(type) {
-    const remaining =
-      type === 'solo'
-        ? `You've used all ${FREE_SOLO_FORKS} free forks this month.`
-        : "You've used your free Fork Around session this month.";
-    showAlert(
-      'Upgrade to ForkIt! Pro',
-      `${remaining}\n\nGo Pro for ${PRO_PRICE_LABEL} — unlimited solo forks and Fork Around sessions.\n\nOr wait until the 1st for your free forks to reset.`,
-      [
+  async function showPaywall(type) {
+    if (Platform.OS === 'web') return;
+    try {
+      const offerings = await Purchases.getOfferings();
+      const monthly = offerings.current?.monthly;
+      if (!monthly) {
+        showAlert('Oops', 'Unable to load subscription info. Please try again later.');
+        return;
+      }
+      const price = monthly.product.priceString || PRO_PRICE_LABEL;
+      const message =
+        type === 'solo'
+          ? `You've explored a lot this month!\n\nGo Pro for ${price} — unlimited searches with as many re-rolls as you want.\n\nFree searches reset on the 1st.`
+          : `You've used your free Fork Around session this month.\n\nGo Pro for ${price} — unlimited group sessions.\n\nFree sessions reset on the 1st.`;
+      showAlert('Upgrade to ForkIt! Pro', message, [
         { text: 'Not Now', style: 'cancel' },
         {
-          text: 'Go Pro',
-          onPress: () => {
-            // TODO: Replace with real IAP purchase flow
-            const expires = Date.now() + PRO_DURATION_DAYS * MS_PER_DAY;
-            setProExpiresAt(expires);
-            AsyncStorage.setItem(STORAGE_KEYS.PRO_EXPIRES, String(expires)).catch(() => {});
-            showToast('Welcome to Pro! Unlimited forks unlocked.', 'success', TOAST_LONG);
+          text: 'Restore Purchase',
+          onPress: async () => {
+            try {
+              const info = await Purchases.restorePurchases();
+              if (typeof info.entitlements.active[RC_ENTITLEMENT_ID] !== 'undefined') {
+                showToast('Pro restored! Welcome back.', 'success', TOAST_LONG);
+              } else {
+                showToast('No active subscription found.', 'warn', TOAST_DEFAULT);
+              }
+            } catch (_) {
+              showToast('Restore failed. Please try again.', 'warn', TOAST_DEFAULT);
+            }
           },
         },
-      ],
-    );
+        {
+          text: 'Go Pro',
+          onPress: async () => {
+            try {
+              const { customerInfo } = await Purchases.purchasePackage(monthly);
+              if (typeof customerInfo.entitlements.active[RC_ENTITLEMENT_ID] !== 'undefined') {
+                showToast('Welcome to Pro! Unlimited forks unlocked.', 'success', TOAST_LONG);
+              }
+            } catch (e) {
+              if (!e.userCancelled) {
+                showToast('Purchase failed. Please try again.', 'warn', TOAST_DEFAULT);
+              }
+            }
+          },
+        },
+      ]);
+    } catch (_) {
+      showAlert('Oops', 'Unable to load subscription info. Please try again later.');
+    }
   }
 
   /**
@@ -2592,6 +2896,7 @@ export default function App() {
           filterKey: currentFilterKey,
         };
         trackApiFetch();
+        incrementUsage('solo');
       }
 
       let results = filterAndEnrichResults(raw);
@@ -2618,7 +2923,6 @@ export default function App() {
       await sleep(DRAMATIC_PAUSE);
 
       setPicked(chosen);
-      incrementUsage('solo');
       setSlotText('');
       setFiltersExpanded(false);
       setStatusLine(pickRandom(SUCCESS_LINES));
@@ -2727,29 +3031,33 @@ export default function App() {
             </Text>
 
             {forkMode === 'solo' ? (
-              <PrimaryButton
-                label={loading ? 'Picking…' : 'Just Fork It'}
-                onPress={forkIt}
-                disabled={loading}
-                loading={loading}
-                spinDeg={spinDeg}
-                bounceY={bounceY}
-              />
+              <View ref={tourRefs.forkBtn} collapsable={false}>
+                <PrimaryButton
+                  label={loading ? 'Picking…' : 'Just Fork It'}
+                  onPress={forkIt}
+                  disabled={loading}
+                  loading={loading}
+                  spinDeg={spinDeg}
+                  bounceY={bounceY}
+                />
+              </View>
             ) : (
-              <PrimaryButton
-                label="Fork Around"
-                icon="people"
-                onPress={() => {
-                  if (checkQuota('group')) {
-                    resetGroupState();
-                    setShowGroupModal(true);
-                  }
-                }}
-                disabled={false}
-                loading={false}
-                spinDeg={spinDeg}
-                bounceY={bounceY}
-              />
+              <View ref={tourRefs.forkAroundBtn} collapsable={false}>
+                <PrimaryButton
+                  label="Fork Around"
+                  icon="people"
+                  onPress={() => {
+                    if (checkQuota('group')) {
+                      resetGroupState();
+                      setShowGroupModal(true);
+                    }
+                  }}
+                  disabled={false}
+                  loading={false}
+                  spinDeg={spinDeg}
+                  bounceY={bounceY}
+                />
+              </View>
             )}
 
             {!isPro() && !loading && (
@@ -2775,6 +3083,7 @@ export default function App() {
 
             {/* Collapsible Filters */}
             <TouchableOpacity
+              ref={tourRefs.filtersToggle}
               onPress={() => setFiltersExpanded(!filtersExpanded)}
               activeOpacity={0.85}
               style={styles.filtersToggle}
@@ -2799,7 +3108,7 @@ export default function App() {
             {filtersExpanded && (
               <View style={styles.filtersContent}>
                 <Text style={styles.label}>How far?</Text>
-                <View style={styles.row}>
+                <View ref={tourRefs.distanceRow} collapsable={false} style={styles.row}>
                   {(travelMode === 'walk'
                     ? [
                         { v: 0.25, t: '¼ mi' },
@@ -2851,35 +3160,37 @@ export default function App() {
                   }}
                 />
 
-                <Text style={styles.label}>Max damage</Text>
-                <View style={styles.row}>
-                  {[
-                    { v: 1, t: '$' },
-                    { v: 2, t: '$$' },
-                    { v: 3, t: '$$$' },
-                    { v: 4, t: '$$$$' },
-                  ].map((p) => (
-                    <Chip
-                      key={p.v}
-                      label={p.t}
-                      icon="pricetag"
-                      active={maxPrice === p.v}
-                      onPress={() => setMaxPrice(p.v)}
-                    />
-                  ))}
-                </View>
+                <View ref={tourRefs.maxDamageRow} collapsable={false}>
+                  <Text style={styles.label}>Max damage</Text>
+                  <View style={styles.row}>
+                    {[
+                      { v: 1, t: '$' },
+                      { v: 2, t: '$$' },
+                      { v: 3, t: '$$$' },
+                      { v: 4, t: '$$$$' },
+                    ].map((p) => (
+                      <Chip
+                        key={p.v}
+                        label={p.t}
+                        icon="pricetag"
+                        active={maxPrice === p.v}
+                        onPress={() => setMaxPrice(p.v)}
+                      />
+                    ))}
+                  </View>
 
-                <Text style={styles.label}>At least this good</Text>
-                <View style={styles.row}>
-                  {[RATING_LOW, RATING_DEFAULT, RATING_HIGH, RATING_TOP].map((r) => (
-                    <Chip
-                      key={r}
-                      label={`${r}+`}
-                      icon="star"
-                      active={minRating === r}
-                      onPress={() => setMinRating(r)}
-                    />
-                  ))}
+                  <Text style={styles.label}>At least this good</Text>
+                  <View style={styles.row}>
+                    {[RATING_LOW, RATING_DEFAULT, RATING_HIGH, RATING_TOP].map((r) => (
+                      <Chip
+                        key={r}
+                        label={`${r}+`}
+                        icon="star"
+                        active={minRating === r}
+                        onPress={() => setMinRating(r)}
+                      />
+                    ))}
+                  </View>
                 </View>
 
                 <Text style={styles.label}>Cuisine keyword (optional)</Text>
@@ -2916,7 +3227,7 @@ export default function App() {
                   />
                 </View>
 
-                <View style={styles.toggleRow}>
+                <View ref={tourRefs.openNowRow} collapsable={false} style={styles.toggleRow}>
                   <Text style={styles.toggleLabel}>Open now</Text>
                   <Chip
                     label={openNow ? 'ON' : 'OFF'}
@@ -2926,7 +3237,7 @@ export default function App() {
                   />
                 </View>
 
-                <View style={styles.toggleRow}>
+                <View ref={tourRefs.hiddenGemsRow} collapsable={false} style={styles.toggleRow}>
                   <Text style={styles.toggleLabel}>Skip the chains</Text>
                   <Chip
                     label={hiddenGems ? 'ON' : 'OFF'}
@@ -2967,25 +3278,28 @@ export default function App() {
               </View>
             )}
 
-            <FeaturePills
-              travelMode={travelMode}
-              onToggleTravel={() => {
-                const next = travelMode === 'drive' ? 'walk' : 'drive';
-                setTravelMode(next);
-                AsyncStorage.setItem(STORAGE_KEYS.TRAVEL_MODE, next).catch(() => {});
-                if (next === 'walk' && radiusMiles > WALK_RADIUS_MAX)
-                  setRadiusMiles(WALK_RADIUS_DEFAULT);
-                if (next === 'drive' && radiusMiles < DRIVE_RADIUS_MIN)
-                  setRadiusMiles(DRIVE_RADIUS_DEFAULT);
-              }}
-              forkMode={forkMode}
-              onToggleFork={() => setForkMode((m) => (m === 'solo' ? 'group' : 'solo'))}
-              favorites={favorites}
-              blockedIds={blockedIds}
-              onShowFavorites={() => setShowFavorites(true)}
-              onShowBlocked={() => setShowBlocked(true)}
-              onShowCustomPlaces={() => setShowCustomPlaces(true)}
-            />
+            <View ref={tourRefs.spotsRow} collapsable={false}>
+              <FeaturePills
+                travelMode={travelMode}
+                onToggleTravel={() => {
+                  const next = travelMode === 'drive' ? 'walk' : 'drive';
+                  setTravelMode(next);
+                  AsyncStorage.setItem(STORAGE_KEYS.TRAVEL_MODE, next).catch(() => {});
+                  if (next === 'walk' && radiusMiles > WALK_RADIUS_MAX)
+                    setRadiusMiles(WALK_RADIUS_DEFAULT);
+                  if (next === 'drive' && radiusMiles < DRIVE_RADIUS_MIN)
+                    setRadiusMiles(DRIVE_RADIUS_DEFAULT);
+                }}
+                forkMode={forkMode}
+                onToggleFork={() => setForkMode((m) => (m === 'solo' ? 'group' : 'solo'))}
+                favorites={favorites}
+                blockedIds={blockedIds}
+                onShowFavorites={() => setShowFavorites(true)}
+                onShowBlocked={() => setShowBlocked(true)}
+                onShowCustomPlaces={() => setShowCustomPlaces(true)}
+                tourRefsExt={tourRefs}
+              />
+            </View>
           </View>
 
           {/* Result - Moved to top */}
@@ -3265,6 +3579,7 @@ export default function App() {
                 <Ionicons name="cafe-outline" size={18} color={THEME.textHint} />
               </TouchableOpacity>
               <TouchableOpacity
+                ref={tourRefs.infoBtn}
                 onPress={() => setShowInfo(true)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
@@ -3276,6 +3591,131 @@ export default function App() {
             <Text style={styles.footer}>Life's too short to debate dinner.</Text>
           </View>
         </ScrollView>
+
+        {/* Tour Spotlight Modal */}
+        <Modal
+          visible={showTour}
+          transparent
+          animationType="fade"
+          onRequestClose={endTour}
+          statusBarTranslucent
+        >
+          <View style={styles.tourOverlay} accessibilityViewIsModal>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={endTour}
+              accessibilityLabel="Skip tour"
+              accessibilityRole="button"
+            />
+
+            {tourSpotLayout && (
+              <View
+                style={[
+                  styles.tourSpotlight,
+                  {
+                    top: tourSpotLayout.y - TOUR_SPOT_PAD,
+                    left: tourSpotLayout.x - TOUR_SPOT_PAD,
+                    width: tourSpotLayout.width + TOUR_SPOT_PAD * 2,
+                    height: tourSpotLayout.height + TOUR_SPOT_PAD * 2,
+                    borderRadius: TOUR_STEPS[tourStep]?.ref === 'infoBtn' ? 999 : TOUR_SPOT_RADIUS,
+                  },
+                ]}
+                pointerEvents="none"
+              />
+            )}
+
+            {(tourSpotLayout || TOUR_STEPS[tourStep]?.mock) && (
+              <View
+                style={[
+                  styles.tourTooltip,
+                  tourSpotLayout
+                    ? TOUR_STEPS[tourStep]?.arrow === 'down'
+                      ? { top: tourSpotLayout.y + tourSpotLayout.height + TOUR_SPOT_PAD * 3 }
+                      : {
+                          top: Math.max(
+                            tourSpotLayout.y - TOUR_TOOLTIP_HEIGHT,
+                            TOUR_TOOLTIP_MIN_TOP,
+                          ),
+                        }
+                    : styles.tourTooltipCentered,
+                ]}
+                pointerEvents="box-none"
+              >
+                {tourSpotLayout && TOUR_STEPS[tourStep]?.arrow && (
+                  <View
+                    style={[
+                      styles.tourArrow,
+                      TOUR_STEPS[tourStep]?.arrow === 'down'
+                        ? styles.tourArrowUp
+                        : styles.tourArrowDown,
+                      {
+                        left: Math.min(
+                          Math.max(
+                            tourSpotLayout.x + tourSpotLayout.width / 2 - TOUR_ARROW_OFFSET,
+                            10,
+                          ),
+                          Dimensions.get('window').width - TOUR_ARROW_OFFSET * 2,
+                        ),
+                      },
+                    ]}
+                  />
+                )}
+                <Text style={styles.tourStepCount}>
+                  {tourStep + 1} of {TOUR_STEP_COUNT}
+                </Text>
+                <Text style={styles.tourTitle}>{TOUR_STEPS[tourStep]?.title}</Text>
+                <Text style={styles.tourDesc}>{TOUR_STEPS[tourStep]?.desc}</Text>
+
+                <View style={styles.tourFooter}>
+                  {tourStep > 0 ? (
+                    <TouchableOpacity
+                      style={styles.tourBackBtn}
+                      onPress={retreatTour}
+                      accessibilityRole="button"
+                      accessibilityLabel="Previous step"
+                    >
+                      <Text style={styles.tourBackText}>Back</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.tourBackSpacer} />
+                  )}
+                  <View style={styles.tourDots}>
+                    {Array.from({ length: TOUR_STEP_COUNT }).map((_, i) => (
+                      <View
+                        key={i}
+                        style={[styles.tourDot, i === tourStep && styles.tourDotActive]}
+                      />
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    style={styles.tourNextBtn}
+                    onPress={advanceTour}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      tourStep === TOUR_STEP_COUNT - 1 ? 'Finish tour' : 'Next step'
+                    }
+                  >
+                    <Text style={styles.tourNextText}>
+                      {tourStep === TOUR_STEP_COUNT - 1 ? 'Get Forking!' : 'Next'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {tourStep < TOUR_STEP_COUNT - 1 && (
+                  <TouchableOpacity
+                    onPress={endTour}
+                    style={styles.tourSkip}
+                    accessibilityRole="button"
+                    accessibilityLabel="Skip tour"
+                  >
+                    <Text style={styles.tourSkipText}>Skip tour</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        </Modal>
 
         <Modal
           visible={showInfo}
@@ -3325,6 +3765,21 @@ export default function App() {
                   }}
                   scrollEventThrottle={16}
                 >
+                  <TouchableOpacity
+                    style={styles.tourLaunchBtn}
+                    onPress={() => {
+                      setShowInfo(false);
+                      easterEggTaps.current = 0;
+                      setTimeout(() => startTour(), SUPPORT_MODAL_DELAY);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Take a tour of ForkIt features"
+                  >
+                    <Ionicons name="compass-outline" size={16} color={THEME.pop} />
+                    <Text style={styles.tourLaunchText}>Take a Tour</Text>
+                    <Text style={styles.tourLaunchSub}>or read below</Text>
+                  </TouchableOpacity>
+
                   <Text
                     style={[styles.infoHeading, styles.marginTopNone]}
                     accessibilityRole="header"
@@ -3395,6 +3850,18 @@ export default function App() {
                     - if ForkIt! picks a Thai place, it'll find other Thai spots nearby{'\n'}
                     {'\u2022'} Your favorites, blocked list, and custom spots are saved on your
                     device
+                  </Text>
+
+                  <Text style={styles.infoHeading} accessibilityRole="header">
+                    Free & Pro
+                  </Text>
+                  <Text style={styles.infoText}>
+                    ForkIt! is free to use with 20 searches per month and 1 Fork Around group
+                    session. Each search loads a pool of nearby restaurants — tap as many times as
+                    you want to re-roll within that pool at no cost. A new search only counts when
+                    your filters change or the pool expires (4 hours).{'\n\n'}
+                    ForkIt! Pro ({PRO_PRICE_LABEL}) removes all limits — unlimited searches and Fork
+                    Around sessions. Free searches reset on the 1st of each month.
                   </Text>
 
                   <Text
@@ -3501,6 +3968,8 @@ export default function App() {
           savedLocations={savedLocations}
           saveLocation={saveLocation}
           deleteSavedLocation={deleteSavedLocation}
+          customPlaces={customPlaces}
+          setCustomPlaces={setCustomPlaces}
           groupParticipants={groupParticipants}
           groupResult={groupResult}
           groupLoading={groupLoading}
@@ -4687,7 +5156,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   groupInput: {
-    backgroundColor: THEME.cardInner,
+    backgroundColor: THEME.surfaceLight,
     color: THEME.textBright,
     borderRadius: 10,
     paddingHorizontal: 14,
@@ -4701,7 +5170,7 @@ const styles = StyleSheet.create({
   groupDivider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 12,
+    marginVertical: 18,
   },
   groupDividerLine: {
     flex: 1,
@@ -4765,10 +5234,12 @@ const styles = StyleSheet.create({
   },
   groupHintText: {
     color: THEME.textHint,
-    fontSize: 12,
+    fontSize: 11,
+    fontStyle: 'italic',
     textAlign: 'center',
-    marginTop: 4,
+    marginTop: -10,
     marginBottom: 4,
+    opacity: 0.7,
   },
   groupLocationContext: {
     color: THEME.pop,
@@ -4892,4 +5363,162 @@ const styles = StyleSheet.create({
     maxHeight: SCREEN_HEIGHT * MODAL_CONTENT_RATIO,
   },
   marginTop16: { marginTop: 16 },
+  groupHintTextLast: { marginBottom: 20 },
+  groupHostBtnGap: { marginTop: 4 },
+  groupHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'baseline',
+  },
+  groupHeaderOrange: { color: THEME.accent, marginBottom: 0 },
+  groupHeaderTeal: { color: THEME.pop, marginTop: 0, marginBottom: 0, marginLeft: 8 },
+  tourBackSpacer: { width: 50 },
+
+  // Tour styles
+  tourOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: THEME.tourOverlay,
+    zIndex: 2000,
+  },
+  tourSpotlight: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: THEME.tourSpotBorder,
+    backgroundColor: THEME.tourSpotBg,
+    zIndex: 2001,
+  },
+  tourTooltip: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    backgroundColor: THEME.tourCard,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: THEME.tourCardBorder,
+    zIndex: 2002,
+    shadowColor: THEME.black,
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  tourTooltipCentered: {
+    top: '25%',
+  },
+  tourArrow: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    backgroundColor: THEME.tourCard,
+    borderWidth: 1,
+    borderColor: THEME.tourCardBorder,
+    transform: [{ rotate: '45deg' }],
+  },
+  tourArrowUp: {
+    top: -8,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+  },
+  tourArrowDown: {
+    bottom: -8,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+  },
+  tourStepCount: {
+    fontSize: 10,
+    color: THEME.tourGold,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  tourTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: THEME.white,
+    marginBottom: 6,
+  },
+  tourDesc: {
+    fontSize: 12.5,
+    color: THEME.tourText,
+    lineHeight: 19,
+    marginBottom: 10,
+  },
+  tourFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  tourDots: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  tourDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: THEME.tourDotBg,
+  },
+  tourDotActive: {
+    backgroundColor: THEME.tourGold,
+    width: 16,
+    borderRadius: 3,
+  },
+  tourBackBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  tourBackText: {
+    color: THEME.tourSkipText,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  tourNextBtn: {
+    backgroundColor: THEME.tourBtnBg,
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+    borderRadius: 999,
+  },
+  tourNextText: {
+    color: THEME.tourBtnText,
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  tourSkip: {
+    alignSelf: 'center',
+    marginTop: 8,
+  },
+  tourSkipText: {
+    fontSize: 11,
+    color: THEME.tourSkipText,
+  },
+  tourLaunchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: THEME.tourLaunchBg,
+    borderWidth: 1,
+    borderColor: THEME.tourLaunchBorder,
+    marginBottom: 14,
+  },
+  tourLaunchText: {
+    color: THEME.pop,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  tourLaunchSub: {
+    color: THEME.tourSkipText,
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 'auto',
+  },
 });

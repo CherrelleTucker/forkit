@@ -226,13 +226,14 @@ export async function startPick(code, hostId) {
  * @param {object} result - the picked restaurant
  * @returns {Promise<object>} updated session
  */
-export async function saveResult(code, result) {
+export async function saveResult(code, result, mergedFilters) {
   const key = sessionKey(code);
   const session = await getJSON(key);
   if (!session) throw new Error('SESSION_NOT_FOUND');
 
   session.status = 'done';
   session.result = result;
+  if (mergedFilters) session.mergedFilters = mergedFilters;
   await setJSON(key, session);
   return session;
 }

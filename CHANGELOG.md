@@ -1,5 +1,30 @@
 # ForkIt Changelog
 
+## Version 2.0.0 - Tour, Fork Around UX, Free/Pro Tier (In Development)
+
+### New Features
+
+#### Interactive Tour (11 Steps)
+- Spotlight overlay tour with back/next navigation, auto-launches on first open
+- Covers all features: Fork It button, walk/drive, filters, distance, price/rating, open now, hidden gems, spots/lists, Fork Around, info, and free vs Pro tiers
+- "Take a Tour" button in info modal for replay
+- Tour version system: bump `TOUR_VERSION` to re-show after major updates
+
+#### Fork Around UX Overhaul
+- **Branding**: "Fork Around. Find Out." side-by-side header — orange (problem) + teal (solution) color theory
+- **Your Spots integration**: Typing in the location field now searches Your Spots by name (with bookmark icon), geocodes address on selection
+- **"Save to Your Spots"**: Saves to both Your Spots and Fork Around quick-access (previously only saved to Fork Around's separate list)
+- Removed redundant Saved Spots pill row from Fork Around modal
+- Cleaner instructional text: italic, smaller, tighter to fields
+- Better input field visibility: subtle background fill on all group inputs
+
+### Improvements
+- Color theory style guide: orange = problem/challenge, teal = solution/answer (applied throughout)
+- Input fields in Fork Around now have subtle `surfaceLight` background for visual balance
+- "or" divider spacing improved between Host/Join sections
+
+---
+
 ## Version 1.1.0 - Closing Soon, Fork Around & Web (2026-03-09)
 
 ### New Features

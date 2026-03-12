@@ -44,6 +44,7 @@ export default async function handler(req, res) {
         ready: !!p.filters,
       })),
       result: session.status === 'done' ? session.result : null,
+      mergedFilters: session.status === 'done' ? session.mergedFilters || null : null,
     });
   } catch (error) {
     console.error('Group status error:', error);

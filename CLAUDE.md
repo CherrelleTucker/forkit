@@ -61,6 +61,8 @@ See `~/Documents/CLAUDE.md` for universal rules (impact check, review timing, do
 
 **ForkIt doc sync targets:** Info modal (App.js), README.md, CHANGELOG.md, CLAUDE.md, ROADMAP.md, privacy docs, docs/index.html, web/public/index.html
 
+**Post-release: update rebrand branch.** After each feature release deploys, rebase or recreate `rebrand/fork-around` on top of current main. This is a standby rebrand from "ForkIt!" to "Fork Around" — kept ready in case of trademark action. Don't update during dev, only after final deployed code lands on main.
+
 ## Deploying
 
 ### Backend
@@ -101,10 +103,13 @@ Standard Expo/EAS build process. Changes to `AppFiles/` code require a new build
 - Backend transforms Google Places API v1 responses to legacy format for client compatibility
 - Keyword search uses Text Search API with `locationRestriction` (rectangle bounding box)
 - No-keyword search uses 6 parallel Nearby Search requests for variety
-- **Pool caching**: First tap fetches full pool, subsequent taps pick locally (zero API calls). Cache invalidates on filter change or after 10 minutes.
+- **Pool caching**: First tap fetches full pool, subsequent taps pick locally (zero API calls). Cache invalidates on filter change or after 4 hours.
 - **Group Fork (Fork Around)**: 1 free session/month, unlimited with Pro ($1.99/month). Host creates session → shares 4-letter code or web link → friends join and set filters → merged filters (most restrictive) → random pick. Sessions auto-expire after 1 hour.
-- **Free tier**: 10 solo forks/month, 1 Fork Around session/month. Resets on the 1st. Pro ($1.99/month for 30 days) unlocks unlimited everything. IAP stub only — real purchase flow TBD.
+- **Free tier**: 20 searches/month, 1 Fork Around session/month. A "search" = new API fetch (filter change or cache expiry). Re-rolls from cached pool are free and unlimited. Resets on the 1st. No countdown shown to users — soft Pro nudge after 10 searches, hard paywall at 20. Pro ($1.99/month) unlocks unlimited everything.
+- **IAP**: RevenueCat (`react-native-purchases`). Products: Apple `com.ctuckersolutions.forkit.pro.monthly`, Google `forkit_pro_monthly`. Google Play product is ACTIVE. Apple product created but needs price set in ASC. Early adopters get `pro` entitlement via RevenueCat promotional grants.
 - **Web joiner**: `web/public/group/index.html` — standalone HTML/JS page for browser-based group joining (no app required)
+- **Interactive Tour**: 11-step spotlight overlay, auto-launches on first open or when `TOUR_VERSION` bumped. Back/Next navigation. Covers all features + free/Pro explainer. Replayable from info modal ("Take a Tour" button). Tour refs attached to key UI elements via `tourRefs` object.
+- **Color theory**: Orange (`THEME.accent`) = problem/challenge/call-to-action. Teal (`THEME.pop`) = solution/answer/resolution. Applied to headings, buttons, and branding throughout.
 
 ## Future Ideas (Pinned)
 - "Local Love" / community spotlight system for featuring local restaurants

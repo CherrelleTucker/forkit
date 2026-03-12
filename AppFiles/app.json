@@ -32,7 +32,12 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B0B0F"
       },
-      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "INTERNET"],
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET",
+        "com.android.vending.BILLING"
+      ],
       "edgeToEdgeEnabled": true
     },
     "web": {
@@ -45,7 +50,8 @@
         {
           "locationWhenInUsePermission": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
         }
-      ]
+      ],
+      "react-native-purchases"
     ],
     "extra": {
       "eas": {

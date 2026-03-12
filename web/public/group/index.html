@@ -648,7 +648,7 @@
           if (statusRes.ok) {
             var statusData = await statusRes.json();
             if (statusData.status === 'done' && statusData.result) {
-              showResult(statusData.result);
+              showResult(statusData.result, statusData.mergedFilters);
               return;
             }
             renderParticipants(statusData.participants || []);
@@ -677,6 +677,15 @@
     if (name === 'waiting') {
       var nameEl = document.getElementById('waiting-name');
       if (nameEl) nameEl.textContent = participantName ? ', ' + participantName : '';
+    }
+    var brandName = document.querySelector('.brand-name');
+    var brandSub = document.querySelector('.brand-sub');
+    if (name === 'result') {
+      brandName.textContent = 'Forked Around.';
+      brandSub.textContent = 'Found out.';
+    } else {
+      brandName.textContent = 'Fork Around';
+      brandSub.textContent = 'Find out.';
     }
   }
   window.showView = showView;
@@ -772,7 +781,7 @@
         if (statusRes.ok) {
           var statusData = await statusRes.json();
           if (statusData.status === 'done' && statusData.result) {
-            showResult(statusData.result);
+            showResult(statusData.result, statusData.mergedFilters);
             return;
           }
           renderParticipants(statusData.participants || []);
@@ -909,7 +918,7 @@
       // Check if done
       if (data.status === 'done' && data.result) {
         stopPolling();
-        showResult(data.result);
+        showResult(data.result, data.mergedFilters);
       }
     } catch (_err) {
       pollErrorCount++;
@@ -961,21 +970,22 @@
   }
 
   // --- Result ---
-  function showResult(result) {
+  function showResult(result, mergedFilters) {
     document.getElementById('result-name').textContent = result.name || 'A Mystery Spot';
 
     var meta = document.getElementById('result-meta');
     meta.innerHTML = '';
-    if (result.rating) {
-      var ratingSpan = document.createElement('span');
-      ratingSpan.className = 'result-rating';
-      ratingSpan.textContent = result.rating + '/5';
-      meta.appendChild(ratingSpan);
-    }
-    if (result.priceLevel) {
-      var priceSpan = document.createElement('span');
-      priceSpan.textContent = '$'.repeat(result.priceLevel);
-      meta.appendChild(priceSpan);
+    if (mergedFilters) {
+      var parts = [];
+      if (mergedFilters.radiusMiles) parts.push(mergedFilters.radiusMiles + ' mi max');
+      if (mergedFilters.minRating != null) parts.push(mergedFilters.minRating + '+ stars');
+      if (mergedFilters.maxPrice != null) parts.push('$'.repeat(mergedFilters.maxPrice) + ' max');
+      if (mergedFilters.keywords && mergedFilters.keywords.length) parts.push(mergedFilters.keywords.join(', '));
+      if (parts.length) {
+        var filtersSpan = document.createElement('span');
+        filtersSpan.textContent = parts.join(' · ');
+        meta.appendChild(filtersSpan);
+      }
     }
 
     var addrEl = document.getElementById('result-address');

@@ -56,9 +56,10 @@
         "releaseStatus": "draft"
       },
       "ios": {
-        "appleId": "cherrellejulieanne@gmail.com",
         "ascAppId": "6759990349",
-        "appleTeamId": "TJAC78FFA8"
+        "ascApiKeyPath": "./AuthKey_BMRSXXL454.p8",
+        "ascApiKeyIssuerId": "1cfe7f6c-7377-44b0-bb5d-08e75dabe482",
+        "ascApiKeyId": "BMRSXXL454"
       }
     }
   }
