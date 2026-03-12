@@ -26,10 +26,18 @@ ForkIt collects and uses your device's location data to provide the core functio
 - Your most recent location coordinates are temporarily cached on your device for faster searches. This cached data expires after 1 hour and is removed when you uninstall the app
 - No location history is maintained beyond the single most recent lookup
 
+### Group Fork Sessions (Premium Feature)
+
+When you use the Group Fork feature to pick a restaurant with friends:
+- **Display Name**: A self-chosen nickname (not your real name) is stored temporarily in the session. It is visible to other participants in the same session.
+- **Filter Preferences**: Your selected filters (radius, price, rating, etc.) are stored temporarily in the session.
+- **Session Data**: All session data (names, filters, results) is stored on our servers using Vercel KV (Redis) and **automatically deleted after 1 hour**. No session data is retained beyond this window.
+- **No Account Required**: Group Fork does not require user accounts, login, or registration.
+
 ### Data NOT Collected
 
 ForkIt does NOT collect, store, or process:
-- Personal identifying information (name, email, phone number)
+- Personal identifying information (real name, email, phone number)
 - User accounts or login credentials
 - Payment information
 - Device identifiers
@@ -60,9 +68,9 @@ When you click these links, you leave the ForkIt app and are subject to the priv
 
 ## Data Storage
 
-- **Local Storage Only**: All app preferences and filter settings are stored locally on your device
-- **No Cloud Sync**: ForkIt does not use cloud storage or remote databases
-- **No Server-Side Storage**: We do not operate servers that store user data
+- **Local Storage**: All app preferences and filter settings are stored locally on your device
+- **Ephemeral Server Storage**: Group Fork sessions are stored temporarily (max 1 hour) on Vercel KV (Redis) servers and then automatically deleted
+- **No Persistent Cloud Storage**: ForkIt does not use persistent cloud storage or databases for user data
 
 ## Permissions
 
@@ -97,6 +105,7 @@ ForkIt is intended for users aged 13 and older. We do not knowingly collect info
 - **Location Data**: Not retained (ephemeral, used only during active session)
 - **Filter Preferences**: Stored locally on device until app is uninstalled
 - **Search History**: Not stored
+- **Group Fork Sessions**: Automatically deleted after 1 hour (server-side)
 
 ## User Rights
 

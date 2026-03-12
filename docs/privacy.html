@@ -207,10 +207,34 @@
         </li>
       </ul>
 
+      <h3>Group Fork Sessions (Premium Feature)</h3>
+      <p>When you use the Group Fork feature to pick a restaurant with friends:</p>
+      <ul>
+        <li>
+          <strong>Display Name:</strong> A self-chosen nickname (not your real
+          name) is stored temporarily in the session and visible to other
+          participants.
+        </li>
+        <li>
+          <strong>Filter Preferences:</strong> Your selected filters are stored
+          temporarily in the session.
+        </li>
+        <li>
+          <strong>Session Data:</strong> All session data is stored on our
+          servers using Vercel KV (Redis) and
+          <strong>automatically deleted after 1 hour</strong>. No session data
+          is retained beyond this window.
+        </li>
+        <li>
+          <strong>No Account Required:</strong> Group Fork does not require user
+          accounts, login, or registration.
+        </li>
+      </ul>
+
       <h3>Data NOT Collected</h3>
       <p>ForkIt does <strong>NOT</strong> collect, store, or process:</p>
       <ul>
-        <li>Personal identifying information (name, email, phone number)</li>
+        <li>Personal identifying information (real name, email, phone number)</li>
         <li>User accounts or login credentials</li>
         <li>Payment information</li>
         <li>Device identifiers</li>
@@ -258,16 +282,17 @@
       <h2>Data Storage</h2>
       <ul>
         <li>
-          <strong>Local Storage Only:</strong> All app preferences and filter
+          <strong>Local Storage:</strong> All app preferences and filter
           settings are stored locally on your device
         </li>
         <li>
-          <strong>No Cloud Sync:</strong> ForkIt does not use cloud storage or
-          remote databases
+          <strong>Ephemeral Server Storage:</strong> Group Fork sessions are
+          stored temporarily (max 1 hour) on Vercel KV (Redis) servers and
+          then automatically deleted
         </li>
         <li>
-          <strong>No Server-Side Storage:</strong> We do not operate servers
-          that store user data
+          <strong>No Persistent Cloud Storage:</strong> ForkIt does not use
+          persistent cloud storage or databases for user data
         </li>
       </ul>
 
@@ -334,6 +359,10 @@
           app is uninstalled
         </li>
         <li><strong>Search History:</strong> Not stored</li>
+        <li>
+          <strong>Group Fork Sessions:</strong> Automatically deleted after 1
+          hour (server-side)
+        </li>
       </ul>
 
       <h2>User Rights</h2>

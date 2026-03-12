@@ -4,16 +4,12 @@
   "outputDirectory": "public",
   "routes": [
     {
-      "src": "/assets/node_modules/.*/([^/]+\\.ttf)$",
-      "dest": "/assets/fonts/$1"
+      "src": "/group$",
+      "dest": "/group/index.html"
     },
     {
-      "src": "/assets/(.*)",
-      "dest": "/assets/$1"
-    },
-    {
-      "src": "/_expo/(.*)",
-      "dest": "/_expo/$1"
+      "src": "/group/(.*)",
+      "dest": "/group/index.html"
     },
     {
       "src": "/favicon.ico",

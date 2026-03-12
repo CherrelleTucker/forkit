@@ -108,7 +108,7 @@ export function setCorsHeaders(req, res) {
     // Mobile apps — allow all (they don't use CORS)
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Integrity-Token');
 }
 

@@ -3,221 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ForkIt - Fork Indecision</title>
+    <title>ForkIt! - Random Restaurant Picker</title>
+    <meta name="description" content="Can't decide where to eat? One tap, one random restaurant near you. Available on Google Play and the App Store." />
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #0B0B0F 0%, #17163B 50%, #0B0B0F 100%);
+            background: linear-gradient(180deg, #0D0D0D 0%, #1A1410 50%, #0D0D0D 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
+            color: rgba(255,255,255,0.92);
             padding: 20px;
         }
 
-        .container {
-            max-width: 600px;
-            text-align: center;
-        }
+        .container { max-width: 500px; text-align: center; }
 
-        .logo {
-            font-size: 120px;
-            margin-bottom: 20px;
-            animation: bounce 2s ease-in-out infinite;
-        }
-
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
-
-        h1 {
-            font-size: 64px;
-            font-weight: 900;
-            margin-bottom: 10px;
-            letter-spacing: 1px;
-        }
+        h1 { font-size: 48px; font-weight: 900; margin-bottom: 8px; }
+        .fork { color: #2DD4BF; }
+        .it { color: #FB923C; }
 
         .tagline {
-            font-size: 20px;
-            color: rgba(255, 255, 255, 0.85);
-            margin-bottom: 40px;
+            font-size: 18px;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 32px;
         }
 
         .description {
-            font-size: 18px;
+            font-size: 16px;
             line-height: 1.6;
-            color: rgba(255, 255, 255, 0.8);
-            margin-bottom: 40px;
+            color: rgba(255,255,255,0.65);
+            margin-bottom: 32px;
         }
 
         .buttons {
             display: flex;
             flex-direction: column;
-            gap: 15px;
+            gap: 12px;
             margin-bottom: 40px;
         }
 
         .btn {
             display: inline-block;
-            padding: 15px 30px;
+            padding: 14px 28px;
             border-radius: 12px;
             text-decoration: none;
             font-weight: 700;
-            font-size: 16px;
-            transition: all 0.3s ease;
+            font-size: 15px;
+            transition: transform 0.15s, opacity 0.15s;
         }
 
-        .btn-primary {
-            background: white;
-            color: #0B0B0F;
+        .btn:hover { transform: scale(1.03); opacity: 0.9; }
+
+        .btn-play {
+            background: #2DD4BF;
+            color: #0D0D0D;
         }
 
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(255, 255, 255, 0.3);
+        .btn-apple {
+            background: #FB923C;
+            color: #0D0D0D;
         }
 
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.5);
-        }
-
-        .features {
-            text-align: left;
-            margin: 40px 0;
-        }
-
-        .feature {
-            display: flex;
-            align-items: flex-start;
-            margin-bottom: 20px;
-        }
-
-        .feature-icon {
-            font-size: 24px;
-            margin-right: 15px;
-        }
-
-        .feature-text h3 {
-            font-size: 18px;
-            margin-bottom: 5px;
-        }
-
-        .feature-text p {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.7);
+        .btn-web {
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.8);
+            border: 1px solid rgba(255,255,255,0.2);
         }
 
         .footer {
-            margin-top: 60px;
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.5);
+            margin-top: 40px;
+            font-size: 13px;
+            color: rgba(255,255,255,0.4);
         }
 
         .footer a {
-            color: rgba(255, 255, 255, 0.7);
+            color: rgba(255,255,255,0.55);
             text-decoration: none;
-            border-bottom: 1px dotted rgba(255, 255, 255, 0.5);
-        }
-
-        .footer a:hover {
-            color: white;
-            border-bottom-color: white;
-        }
-
-        @media (max-width: 768px) {
-            h1 {
-                font-size: 48px;
-            }
-
-            .logo {
-                font-size: 80px;
-            }
-
-            .tagline {
-                font-size: 16px;
-            }
-
-            .description {
-                font-size: 16px;
-            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="logo">🍴</div>
-        <h1>ForkIt</h1>
-        <p class="tagline">Fork indecision. Fork regret. Fork it all.</p>
+        <h1><span class="fork">Fork</span><span class="it">It!</span></h1>
+        <p class="tagline">Can't decide where to eat? Let fate decide.</p>
 
         <p class="description">
-            Can't decide where to eat? We'll pick for you. One tap, one choice, done. Plus copycat recipes if you'd rather stay home.
+            One tap. One random restaurant near you. No more "I don't care, you pick" conversations.
+            Filters for distance, price, rating, cuisine, and more.
         </p>
 
         <div class="buttons">
-            <a href="#" class="btn btn-primary">
-                Download on Google Play (Coming Soon)
+            <a href="https://play.google.com/store/apps/details?id=com.ctuckersolutions.forkit" class="btn btn-play" target="_blank" rel="noopener">
+                Get it on Google Play
             </a>
-            <a href="https://github.com/CherrelleTucker/forkit" class="btn btn-secondary" target="_blank">
-                View on GitHub
+            <a href="https://apps.apple.com/app/forkit-restaurant-picker/id6759990349" class="btn btn-apple" target="_blank" rel="noopener">
+                Download on the App Store
+            </a>
+            <a href="https://forkit-web.vercel.app" class="btn btn-web" target="_blank" rel="noopener">
+                Visit forkit-web.vercel.app
             </a>
         </div>
 
-        <div class="features">
-            <div class="feature">
-                <div class="feature-icon">🎲</div>
-                <div class="feature-text">
-                    <h3>True Random Selection</h3>
-                    <p>One button. One choice. No scrolling, no regrets.</p>
-                </div>
-            </div>
-
-            <div class="feature">
-                <div class="feature-icon">✨</div>
-                <div class="feature-text">
-                    <h3>Hidden Gems Mode</h3>
-                    <p>Discover local restaurants, skip the chains.</p>
-                </div>
-            </div>
-
-            <div class="feature">
-                <div class="feature-icon">🏡</div>
-                <div class="feature-text">
-                    <h3>Make at Home</h3>
-                    <p>Don't want to go out? Get copycat recipes instead.</p>
-                </div>
-            </div>
-
-            <div class="feature">
-                <div class="feature-icon">🎚️</div>
-                <div class="feature-text">
-                    <h3>Smart Filters</h3>
-                    <p>Distance, price, rating, cuisine. Guardrails, not browsing.</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="footer">
-            <p>
-                <a href="privacy.html">Privacy Policy</a> •
-                <a href="https://github.com/CherrelleTucker/forkit" target="_blank">GitHub</a> •
-                Made with ❤️ and hunger
-            </p>
-        </div>
+        <footer class="footer">
+            <a href="privacy.html">Privacy Policy</a> &middot;
+            <a href="https://github.com/CherrelleTucker/forkit" target="_blank" rel="noopener">GitHub</a>
+        </footer>
     </div>
 </body>
 </html>

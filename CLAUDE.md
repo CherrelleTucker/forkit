@@ -13,14 +13,15 @@ Random restaurant picker app. Users tap "Fork It" to get a random nearby restaur
 - **Config**: `app.json`, `.env` (EXPO_PUBLIC_BACKEND_URL)
 
 ### Web App (`web/`)
-- **Built from the same codebase** as the mobile app via `npx expo export --platform web`
+- **Landing page + group joiner only** (not the full Expo app — prevents free usage bypassing in-app limits)
 - **Hosted at**: https://forkit-web.vercel.app
-- **Deploy process**: See "Deploying the Web App" below
-- **Platform wrappers** (in `AppFiles/utils/`):
+- **Pages**:
+  - `web/public/index.html` — Static landing page (download CTAs + "Join a Session" link)
+  - `web/public/group/index.html` — Standalone Fork Around web joiner (no app required)
+- **No Expo build needed** — both pages are static HTML/CSS/JS
+- **Platform wrappers** (in `AppFiles/utils/`) still exist for the mobile Expo web export if ever needed:
   - `platform.js` — Haptics (no-op on web) and Alert (window.alert on web)
   - `location.js` — Browser Geolocation API on web, expo-location on native
-- `App.js` skips auto-location-request on web (deferred to user tap)
-- RefreshControl disabled on web
 
 ### Backend (`forkit-backend/`)
 - **Platform**: Vercel serverless functions (Node.js, ESM)
@@ -29,11 +30,36 @@ Random restaurant picker app. Users tap "Fork It" to get a random nearby restaur
   - `api/places-nearby.js` — Main search (Text Search for keywords, Nearby Search otherwise)
   - `api/places-details.js` — Detailed place info
   - `api/verify-integrity.js` — Play Integrity verification
+- **Group Fork endpoints** (`api/group/`):
+  - `create.js` — Host creates session, returns 4-letter code
+  - `join.js` — Join session with code + name
+  - `filters.js` — Submit filter preferences
+  - `status.js` (GET) — Poll session status and participants
+  - `pick.js` — Host triggers the pick (merges filters, searches, picks random)
+  - `leave.js` — Leave/end session
+- **Session storage** (`lib/group.js`): Vercel KV (Redis), 1-hour TTL, max 8 participants
 - **Security** (`lib/security.js`):
-  - Rate limiting: 10 req/min per IP
+  - Rate limiting: 30 req/min per IP
   - Origin checking: only allows forkit-web.vercel.app and localhost
   - Mobile (no Origin header) passes through
 - **API key**: Google Places API key stored in Vercel env vars (restricted to Places API only)
+- **Vercel KV**: Requires `KV_REST_API_URL` and `KV_REST_API_TOKEN` env vars (set in Vercel dashboard)
+
+## Pre-Push / Pre-Deploy (ForkIt-specific)
+
+See `~/Documents/CLAUDE.md` for universal rules (impact check, review timing, doc sync, repo hygiene).
+
+**ForkIt impact check platforms:**
+
+| Platform | How it goes live |
+|----------|------------------|
+| Google Play | New EAS build + manual AAB upload (no service account) |
+| App Store | New EAS build + submit for review |
+| Web (forkit-web.vercel.app) | `cd web && npx vercel deploy --prod --scope ctuckers-projects-c72f1fff --yes` |
+| Backend (forkit-backend.vercel.app) | `cd forkit-backend && npx vercel --prod --yes` |
+| GitHub Pages (docs/) | **Immediate on push to main** |
+
+**ForkIt doc sync targets:** Info modal (App.js), README.md, CHANGELOG.md, CLAUDE.md, ROADMAP.md, privacy docs, docs/index.html, web/public/index.html
 
 ## Deploying
 
@@ -44,30 +70,18 @@ npx vercel --prod --yes
 ```
 
 ### Web App
-The web app requires a multi-step deploy because Vercel blocks `node_modules` paths (font assets use `@expo-google-fonts` paths with `@` symbol):
+The web app is a **landing page + group joiner only** (not the full Expo app). The full app is not served on web to prevent free usage bypassing in-app limits.
 
+- `web/public/index.html` — Static landing page (download CTA + "Join a Session" link)
+- `web/public/group/index.html` — Standalone group joiner (Fork Around)
+
+**Deploy** (no Expo build needed — both pages are static):
 ```bash
-# 1. Build the static export
-cd AppFiles
-npx expo export --platform web --clear
-
-# 2. Copy to web deploy directory
-cd ..
-rm -rf web/public
-cp -r AppFiles/dist web/public
-
-# 3. Flatten font files (Vercel ignores node_modules paths)
-mkdir -p web/public/assets/fonts
-cd web/public/assets
-find node_modules -type f -name "*.ttf" -exec cp {} fonts/ \;
-cd ../../..
-
-# 4. Deploy
 cd web
 npx vercel deploy --prod --scope ctuckers-projects-c72f1fff --yes
 ```
 
-The `web/vercel.json` has rewrite rules that redirect font requests from the deep `node_modules` paths to the flat `assets/fonts/` directory.
+If you ever need to rebuild the Expo web export for testing, the old process still works — just make sure to back up and restore `index.html` and `group/` after copying `dist/`.
 
 ### Android (Closed Testing)
 Standard Expo/EAS build process. Changes to `AppFiles/` code require a new build. Backend changes deploy independently.
@@ -87,6 +101,10 @@ Standard Expo/EAS build process. Changes to `AppFiles/` code require a new build
 - Backend transforms Google Places API v1 responses to legacy format for client compatibility
 - Keyword search uses Text Search API with `locationRestriction` (rectangle bounding box)
 - No-keyword search uses 6 parallel Nearby Search requests for variety
+- **Pool caching**: First tap fetches full pool, subsequent taps pick locally (zero API calls). Cache invalidates on filter change or after 10 minutes.
+- **Group Fork (Fork Around)**: 1 free session/month, unlimited with Pro ($1.99/month). Host creates session → shares 4-letter code or web link → friends join and set filters → merged filters (most restrictive) → random pick. Sessions auto-expire after 1 hour.
+- **Free tier**: 10 solo forks/month, 1 Fork Around session/month. Resets on the 1st. Pro ($1.99/month for 30 days) unlocks unlimited everything. IAP stub only — real purchase flow TBD.
+- **Web joiner**: `web/public/group/index.html` — standalone HTML/JS page for browser-based group joining (no app required)
 
 ## Future Ideas (Pinned)
 - "Local Love" / community spotlight system for featuring local restaurants

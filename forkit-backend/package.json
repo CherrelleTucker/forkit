@@ -12,5 +12,8 @@
   },
   "engines": {
     "node": ">=18.x"
+  },
+  "dependencies": {
+    "ioredis": "^5.10.0"
   }
 }

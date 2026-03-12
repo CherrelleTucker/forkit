@@ -1,37 +1,285 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <title>ForkIt</title>
-    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
-    <style id="expo-reset">
-      /* These styles make the body full-height */
-      html,
-      body {
-        height: 100%;
-      }
-      /* These styles disable body scrolling if you are using <ScrollView> */
-      body {
-        overflow: hidden;
-      }
-      /* These styles make the root element full-height */
-      #root {
-        display: flex;
-        height: 100%;
-        flex: 1;
-      }
-    </style>
-  <link rel="icon" href="/favicon.ico" /></head>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ForkIt! - Random Restaurant Picker</title>
+  <meta name="description" content="Can't decide where to eat? Tap one button and let ForkIt! pick a random restaurant near you. Available on Google Play and the App Store." />
+  <meta property="og:title" content="ForkIt! - Random Restaurant Picker" />
+  <meta property="og:description" content="Can't decide where to eat? One tap, one random restaurant near you. No more 'I don't care, you pick' conversations." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://forkit-web.vercel.app" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="ForkIt! - Random Restaurant Picker" />
+  <meta name="twitter:description" content="Can't decide where to eat? One tap, one random restaurant near you." />
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  <body>
-    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
-    <noscript>
-      You need to enable JavaScript to run this app.
-    </noscript>
-    <!-- The root element for your Expo app. -->
-    <div id="root"></div>
-  <script src="/_expo/static/js/web/index-15259fbe106a6b36d2ef59a653ca232f.js" defer></script>
+    :root {
+      --accent: #FB923C;
+      --pop: #2DD4BF;
+      --bg-start: #0D0D0D;
+      --bg-mid: #1A1410;
+      --bg-end: #0D0D0D;
+      --text-primary: rgba(255,255,255,0.92);
+      --text-secondary: rgba(255,255,255,0.75);
+      --text-muted: rgba(255,255,255,0.55);
+      --text-hint: rgba(255,255,255,0.45);
+      --text-faint: rgba(255,255,255,0.3);
+      --border-subtle: rgba(255,255,255,0.12);
+      --border-light: rgba(255,255,255,0.25);
+      --surface-light: rgba(255,255,255,0.06);
+      --pop-bg: rgba(45,212,191,0.06);
+      --pop-border: rgba(45,212,191,0.25);
+      --pop-border-strong: rgba(45,212,191,0.35);
+      --pop-surface: rgba(45,212,191,0.15);
+      --pop-surface-hover: rgba(45,212,191,0.25);
+    }
+
+    body {
+      font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-mid) 50%, var(--bg-end) 100%);
+      min-height: 100vh;
+      color: var(--text-primary);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      margin-bottom: 4px;
+    }
+
+    .logo-fork {
+      color: var(--pop);
+    }
+
+    .logo-it {
+      color: var(--accent);
+    }
+
+    .logo-icon {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 2px;
+    }
+
+    .subtitle {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+
+    .tagline {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    .tagline-orange {
+      color: var(--accent);
+    }
+
+    .tagline-teal {
+      color: var(--pop);
+    }
+
+    .description {
+      font-size: 14px;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.6;
+      margin-bottom: 36px;
+    }
+
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 36px;
+      list-style: none;
+    }
+
+    .feature-pill {
+      background: var(--surface-light);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .download-section {
+      margin-bottom: 32px;
+    }
+
+    .download-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--text-hint);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .store-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .store-btn {
+      display: inline-block;
+      transition: transform 0.15s, opacity 0.15s;
+      text-decoration: none;
+    }
+
+    .store-btn:hover {
+      transform: scale(1.03);
+      opacity: 0.9;
+    }
+
+    .store-btn img {
+      height: 44px;
+      display: block;
+      border-radius: 12px;
+      border: 1px solid var(--border-light);
+    }
+
+    .divider {
+      width: 60px;
+      height: 1px;
+      background: var(--border-subtle);
+      margin: 32px auto;
+    }
+
+    .group-section {
+      background: var(--pop-bg);
+      border: 1px solid var(--pop-border);
+      border-radius: 16px;
+      padding: 20px;
+    }
+
+    .group-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--pop);
+      margin-bottom: 6px;
+    }
+
+    .group-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+
+    .group-link {
+      display: inline-block;
+      padding: 10px 24px;
+      background: var(--pop-surface);
+      border: 1px solid var(--pop-border-strong);
+      border-radius: 10px;
+      color: var(--pop);
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: transform 0.15s, background 0.15s;
+    }
+
+    .group-link:hover {
+      transform: scale(1.03);
+      background: var(--pop-surface-hover);
+    }
+
+    .footer {
+      margin-top: 36px;
+      font-size: 12px;
+      color: var(--text-faint);
+    }
+
+    .footer a {
+      color: var(--text-hint);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1 class="logo">
+        <span class="logo-fork">Fork</span><span class="logo-it">It</span><span class="logo-icon"><svg width="18" height="48" viewBox="2.5 0 6 20" aria-hidden="true"><g transform="rotate(180, 5.5, 8) translate(5.5, 0) scale(0.8, 1) translate(-5.5, 0)"><path d="M4.25 0a.25.25 0 0 1 .25.25v5.122a.128.128 0 0 0 .256.006l.233-5.14A.25.25 0 0 1 5.24 0h.522a.25.25 0 0 1 .25.238l.233 5.14a.128.128 0 0 0 .256-.006V.25A.25.25 0 0 1 6.75 0h.29a.5.5 0 0 1 .498.458l.423 5.07a1.69 1.69 0 0 1-1.059 1.711l-.053.022a.92.92 0 0 0-.58.884L6.47 15a.971.971 0 1 1-1.942 0l.202-6.855a.92.92 0 0 0-.58-.884l-.053-.022a1.69 1.69 0 0 1-1.059-1.712L3.462.458A.5.5 0 0 1 3.96 0z" fill="#FB923C"/></g><circle cx="5.5" cy="18" r="1.5" fill="#2DD4BF"/></svg></span>
+      </h1>
+      <div class="subtitle">Random Restaurant Picker</div>
+    </header>
+
+    <h2 class="tagline">
+      <span class="tagline-orange">Can't decide where to eat?</span><br />
+      <span class="tagline-teal">Let fate decide.</span>
+    </h2>
+    <p class="description">
+      One tap. One random restaurant near you. No more "I don't care, you pick" conversations. Filters for distance, price, rating, cuisine, and more.
+    </p>
+
+    <ul class="features" role="list">
+      <li class="feature-pill">Random picks</li>
+      <li class="feature-pill">Walk or drive</li>
+      <li class="feature-pill">Skip the chains</li>
+      <li class="feature-pill">Cuisine filters</li>
+      <li class="feature-pill">Fork Around with friends</li>
+      <li class="feature-pill">Save Mom's house to the rotation</li>
+      <li class="feature-pill">Block the restaurant your ex works at</li>
+    </ul>
+
+    <div class="download-section">
+      <div class="download-label">Get the App</div>
+      <div class="store-buttons">
+        <a href="https://play.google.com/store/apps/details?id=com.ctuckersolutions.forkit" class="store-btn" target="_blank" rel="noopener">
+          <img src="/assets/badges/google-play.svg" alt="Get it on Google Play" />
+        </a>
+        <a href="https://apps.apple.com/app/forkit-restaurant-picker/id6759990349" class="store-btn" target="_blank" rel="noopener">
+          <img src="/assets/badges/app-store.svg" alt="Download on the App Store" />
+        </a>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <section class="group-section">
+      <h3 class="group-title">Got a session code?</h3>
+      <p class="group-desc">
+        Someone invited you to pick a restaurant together. Join their Fork Around session here.
+      </p>
+      <a href="/group" class="group-link">Join a Session</a>
+    </section>
+
+    <footer class="footer">
+      <a href="/group">Fork Around</a> &middot; <a href="https://cherrelletucker.github.io/forkit/privacy.html">Privacy</a> &middot; <a href="https://github.com/CherrelleTucker/forkit">GitHub</a>
+    </footer>
+  </main>
 </body>
 </html>

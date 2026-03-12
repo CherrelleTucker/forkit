@@ -1,5 +1,39 @@
 # ForkIt Changelog
 
+## Version 1.1.0 - Closing Soon, Fork Around & Web (2026-03-09)
+
+### New Features
+
+#### Fork Around (Group Fork)
+- **Group restaurant picking**: Host creates a session, shares a 4-letter code or web link, friends join and set their filters, merged filters pick a random restaurant
+- **Web joiner**: Friends can join sessions from any browser at forkit-web.vercel.app/group — no app required
+- **Session validation**: Web joiner verifies session exists before showing join form
+- **Backend**: Vercel KV (Redis) sessions with 1-hour TTL, max 8 participants, rate limiting
+
+#### Closing Soon Filter
+- Excludes restaurants closing within 30 minutes
+- Warning toast for places closing within 60 minutes: "Get walking!" / "Better hurry!" / "Drive safely!"
+- Backend passes opening hours periods data to client
+
+#### Web Landing Page
+- Static landing page at forkit-web.vercel.app with download CTAs and session join link
+- Replaced full Expo web export to prevent free unlimited usage via browser
+- Semantic HTML, accessibility (aria-pressed, aria-live, role="alert"), Open Graph tags
+
+### Improvements
+- Walk mode suggestion threshold lowered from 40 to 25 results
+- Tighter filter chip sizing (all distance pills fit on one row)
+- Custom location pill spacing improved
+- Info modal: added privacy policy link, updated version display, updated Coming Soon
+- Search near a different location: enter an address instead of only GPS
+
+### Platform
+- **iOS**: v1.1.0 approved and live on App Store
+- **Android**: v1.1.0 live on Google Play
+- **Web**: Landing page + group joiner deployed to forkit-web.vercel.app
+
+---
+
 ## Version 2.0.0 - API Migration & Security Update (2026-01-07)
 
 ### Major Changes

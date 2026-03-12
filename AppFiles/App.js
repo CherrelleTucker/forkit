@@ -15,6 +15,7 @@ import {
   Platform,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -71,6 +72,7 @@ const DEBOUNCE_DELAY = 350;
 const THROTTLE_WINDOW = 60000;
 const THROTTLE_MAX_TAPS = 8;
 const RECENTLY_SHOWN_MAX = 10;
+const POOL_STALE_MS = 3600000; // 1 hour — refetch pool after this
 const WALK_RESULTS_THRESHOLD = 25;
 const CLOSING_SOON_EXCLUDE_MIN = 30;
 const CLOSING_SOON_WARN_MIN = 60;
@@ -139,7 +141,29 @@ const STORAGE_KEYS = {
   BLOCKED: '@forkit_blocked',
   CUSTOM_PLACES: '@forkit_custom_places',
   TRAVEL_MODE: '@forkit_travel_mode',
+  API_FETCH_COUNT: '@forkit_api_fetches',
+  SAVED_LOCATIONS: '@forkit_saved_locations',
+  FORK_USAGE: '@forkit_fork_usage',
+  PRO_EXPIRES: '@forkit_pro_expires',
 };
+
+// Tip prompt — show after this many API fetches, then every N more
+const TIP_PROMPT_FIRST = 50;
+const TIP_PROMPT_INTERVAL = 75;
+
+// Free tier limits — resets on the 1st of each month
+const FREE_SOLO_FORKS = 10;
+const FREE_GROUP_FORKS = 1;
+const FREE_FORKS_LOW_THRESHOLD = 5;
+const PRO_PRICE_LABEL = '$1.99/month';
+const PRO_DURATION_DAYS = 30;
+const MS_PER_DAY = 86400000;
+
+// Fork Around
+const GROUP_MODAL_CLOSE_DELAY = 300;
+const GROUP_POLL_INTERVAL = 2000;
+const GROUP_SESSION_EXPIRED_STATUS = 404;
+const MAX_SAVED_LOCATIONS = 10;
 
 // Theme colors - "Fork it" energy (Orange + Teal + Cream)
 const THEME = {
@@ -667,14 +691,242 @@ function GlassCard({ title, icon, children, accent }) {
   );
 }
 
-function PrimaryButton({ label, onPress, disabled, loading, spinDeg, bounceY }) {
+/**
+ * Displays usage hint or paywall prompt based on remaining free forks.
+ * @param {object} props - Component props
+ * @param {string} props.mode - 'solo' or 'group'
+ * @param {{solo: number, group: number}} props.usage - current usage counts
+ * @param {Function} props.onPaywall - callback to show paywall
+ * @returns {JSX.Element|null}
+ */
+function UsageHint({ mode, usage, onPaywall }) {
+  if (mode === 'solo') {
+    const soloLeft = FREE_SOLO_FORKS - usage.solo;
+    if (soloLeft <= FREE_FORKS_LOW_THRESHOLD && soloLeft > 0) {
+      return (
+        <Text style={styles.usageHint}>
+          {soloLeft} free fork{soloLeft !== 1 ? 's' : ''} left this month
+        </Text>
+      );
+    }
+    if (soloLeft <= 0) {
+      return (
+        <TouchableOpacity onPress={() => onPaywall('solo')} activeOpacity={0.7}>
+          <Text style={styles.usageHintAccent}>Upgrade to Pro for unlimited forks</Text>
+        </TouchableOpacity>
+      );
+    }
+  } else {
+    const groupLeft = FREE_GROUP_FORKS - usage.group;
+    if (groupLeft <= 0) {
+      return (
+        <TouchableOpacity onPress={() => onPaywall('group')} activeOpacity={0.7}>
+          <Text style={styles.usageHintAccent}>Upgrade to Pro for unlimited group sessions</Text>
+        </TouchableOpacity>
+      );
+    }
+  }
+  return null;
+}
+
+/**
+ * Check how many minutes until a restaurant closes based on opening hours.
+ * @param {object} openingHours - opening hours with periods array
+ * @returns {number|null} minutes until closing, or null if unknown
+ */
+function getMinutesUntilClosing(openingHours) {
+  if (!openingHours?.periods?.length) return null;
+  const now = new Date();
+  const currentDay = now.getDay();
+  const currentMinutes = now.getHours() * MINUTES_PER_HOUR + now.getMinutes();
+
+  for (const period of openingHours.periods) {
+    if (!period.close || period.close.day !== currentDay) continue;
+    const closeMinutes = period.close.hour * MINUTES_PER_HOUR + period.close.minute;
+    if (closeMinutes > currentMinutes) return closeMinutes - currentMinutes;
+  }
+
+  const tomorrow = (currentDay + 1) % DAYS_PER_WEEK;
+  for (const period of openingHours.periods) {
+    if (!period.close || period.close.day !== tomorrow) continue;
+    const closeMinutes = period.close.hour * MINUTES_PER_HOUR + period.close.minute;
+    if (closeMinutes < OVERNIGHT_CUTOFF_MIN) {
+      return MINUTES_PER_DAY - currentMinutes + closeMinutes;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Check if a restaurant matches any of the exclude keywords.
+ * Matches against restaurant name and Google Places types.
+ * @param {object} restaurant - restaurant object with name and types
+ * @param {string[]} excludeTerms - lowercase terms to exclude
+ * @returns {boolean} true if the restaurant should be excluded
+ */
+function matchesExclude(restaurant, excludeTerms) {
+  if (excludeTerms.length === 0) return false;
+  const nameLower = (restaurant.name || '').toLowerCase();
+  const typesJoined = (restaurant.types || []).join(' ').toLowerCase();
+  return excludeTerms.some((term) => nameLower.includes(term) || typesJoined.includes(term));
+}
+
+/**
+ * Get the closing-soon toast message, or null if not closing soon.
+ * @param {number|null} closingMins - minutes until closing
+ * @param {string} travelMode - 'walk' or 'drive'
+ * @param {number} radiusMiles - current radius
+ * @returns {string|null} hurry message or null
+ */
+function getClosingSoonToast(closingMins, travelMode, radiusMiles) {
+  if (closingMins === null || closingMins > CLOSING_SOON_WARN_MIN) return null;
+  if (travelMode === 'walk' && radiusMiles <= WALK_CLOSE_RADIUS) return 'Get walking!';
+  if (travelMode === 'walk') return 'Better hurry!';
+  return 'Drive safely!';
+}
+
+/**
+ * Build the close-group-modal confirmation config, or null if no confirmation needed.
+ * @param {string} groupStep - current group step
+ * @param {boolean} isHost - whether the user is the host
+ * @returns {object|null} { title, message, confirmText } or null
+ */
+function getCloseModalConfig(groupStep, isHost) {
+  const inSession = groupStep === 'hosting' || groupStep === 'waiting';
+  if (!inSession) return null;
+  return {
+    title: isHost ? 'End Session?' : 'Leave Session?',
+    message: isHost
+      ? 'Closing will end the session for everyone.'
+      : 'You can rejoin with the same code if the session is still active.',
+    confirmText: isHost ? 'End Session' : 'Leave',
+  };
+}
+
+/**
+ * Parse raw AsyncStorage values into typed state. Returns only fields that had data.
+ * @param {Array} raw - array of [favData, blockData, customData, travelData, fetchCountData, savedLocsData, usageData, proData]
+ * @returns {object} parsed state fields
+ */
+function parseStoredState(raw) {
+  const [
+    favData,
+    blockData,
+    customData,
+    travelData,
+    fetchCountData,
+    savedLocsData,
+    usageData,
+    proData,
+  ] = raw;
+  const state = {};
+  if (favData) state.favorites = JSON.parse(favData).map(migrateFavorite);
+  if (blockData) state.blockedIds = JSON.parse(blockData);
+  if (customData) state.customPlaces = JSON.parse(customData);
+  if (travelData === 'walk' || travelData === 'drive') state.travelMode = travelData;
+  if (fetchCountData) state.fetchCount = parseInt(fetchCountData, 10) || 0;
+  if (savedLocsData) state.savedLocations = JSON.parse(savedLocsData);
+  if (usageData) {
+    const parsed = JSON.parse(usageData);
+    const now = new Date();
+    if (parsed.month === now.getMonth() && parsed.year === now.getFullYear()) {
+      state.forkUsage = parsed;
+    }
+  }
+  if (proData) state.proExpiresAt = parseInt(proData, 10) || 0;
+  return state;
+}
+
+// Travel/fork mode toggle pills and quick-action buttons.
+function FeaturePills({
+  travelMode,
+  onToggleTravel,
+  forkMode,
+  onToggleFork,
+  favorites,
+  blockedIds,
+  onShowFavorites,
+  onShowBlocked,
+  onShowCustomPlaces,
+}) {
+  const isWalk = travelMode === 'walk';
+  const isGroup = forkMode === 'group';
+  return (
+    <View style={styles.featurePills}>
+      <TouchableOpacity
+        onPress={onToggleTravel}
+        style={[
+          styles.footerActionBtn,
+          { backgroundColor: isWalk ? THEME.popBgMedium : THEME.surfaceHover },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={`Switch to ${isWalk ? 'drive' : 'walk'} mode`}
+      >
+        <Ionicons
+          name={isWalk ? 'walk' : 'car'}
+          size={14}
+          color={isWalk ? THEME.pop : THEME.textSubtle}
+        />
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={onToggleFork}
+        style={[
+          styles.footerActionBtn,
+          { backgroundColor: isGroup ? THEME.popBgMedium : THEME.surfaceHover },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={`Switch to ${isGroup ? 'solo' : 'group'} mode`}
+      >
+        <Ionicons
+          name={isGroup ? 'people' : 'person'}
+          size={14}
+          color={isGroup ? THEME.pop : THEME.textSubtle}
+        />
+      </TouchableOpacity>
+      {favorites.length > 0 && (
+        <TouchableOpacity
+          onPress={onShowFavorites}
+          style={styles.footerActionBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`View ${favorites.length} favorites`}
+        >
+          <Ionicons name="heart" size={14} color={THEME.accent} />
+          <Text style={styles.footerActionText}>{favorites.length}</Text>
+        </TouchableOpacity>
+      )}
+      {blockedIds.length > 0 && (
+        <TouchableOpacity
+          onPress={onShowBlocked}
+          style={styles.footerActionBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`View ${blockedIds.length} blocked restaurants`}
+        >
+          <Ionicons name="ban" size={14} color={THEME.muted} />
+          <Text style={styles.footerActionText}>{blockedIds.length}</Text>
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity
+        onPress={onShowCustomPlaces}
+        style={styles.footerActionBtn}
+        accessibilityRole="button"
+        accessibilityLabel="Manage your spots"
+      >
+        <Ionicons name="add-circle" size={14} color={THEME.pop} />
+        <Text style={styles.footerActionText}>Spots</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function PrimaryButton({ label, icon, onPress, disabled, loading, spinDeg, bounceY }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.9}
       accessibilityRole="button"
-      accessibilityLabel={loading ? 'Finding a restaurant' : 'Fork It, pick a random restaurant'}
+      accessibilityLabel={loading ? 'Finding a restaurant' : label}
       accessibilityState={{ disabled, busy: loading }}
     >
       <LinearGradient
@@ -693,7 +945,7 @@ function PrimaryButton({ label, onPress, disabled, loading, spinDeg, bounceY }) 
             styles.animatedForkWrap,
           ]}
         >
-          <Ionicons name="restaurant" size={18} color={THEME.white} />
+          <Ionicons name={icon || 'restaurant'} size={18} color={THEME.white} />
         </Animated.View>
 
         <Text style={styles.primaryText}>{label}</Text>
@@ -740,6 +992,733 @@ function Toast({ text, kind }) {
 }
 
 // ==============================
+// GROUP FORK MODAL
+// ==============================
+
+/**
+ * Renders a single row in the participant list.
+ * @param {object} props - Component props
+ * @param {{ name: string, isHost: boolean, ready: boolean }} props.participant - Participant data
+ * @returns {JSX.Element} The rendered participant row
+ */
+function GroupParticipantRow({ participant }) {
+  const { name, isHost, ready } = participant;
+  return (
+    <View key={name} style={styles.groupParticipantRow}>
+      <Ionicons
+        name={isHost ? 'star' : 'person'}
+        size={14}
+        color={ready ? THEME.pop : THEME.textHint}
+      />
+      <Text style={styles.groupParticipantName}>{name}</Text>
+      <Text style={[styles.groupParticipantStatus, { color: ready ? THEME.pop : THEME.textHint }]}>
+        {ready ? 'Ready' : 'Setting filters…'}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Modal for Fork Around sessions — create, join, wait, and view results.
+ * @param {object} props - Component props
+ * @param {boolean} props.visible - Whether the modal is visible
+ * @param {Function} props.onClose - Callback to close the modal
+ * @param {string} props.groupStep - Current step: 'menu' | 'hosting' | 'waiting' | 'result'
+ * @param {string} props.groupCode - The 4-letter session code
+ * @param {string} props.groupName - User's display name
+ * @param {Function} props.setGroupName - Setter for groupName
+ * @param {string} props.groupJoinCode - Code entered to join a session
+ * @param {Function} props.setGroupJoinCode - Setter for groupJoinCode
+ * @param {string} props.groupLocationName - Host's location name
+ * @param {Function} props.setGroupLocationName - Setter for groupLocationName
+ * @param {string} props.groupHostName - Host's display name (for joiners)
+ * @param {number|null} props.groupHostRadius - Host's selected radius (for joiners)
+ * @param {Array} props.savedLocations - User's saved locations
+ * @param {Function} props.saveLocation - Save a new location
+ * @param {Function} props.deleteSavedLocation - Delete a saved location
+ * @param {Array} props.groupParticipants - List of participants
+ * @param {object|null} props.groupResult - Picked restaurant result
+ * @param {boolean} props.groupLoading - Whether a group action is in progress
+ * @param {string} props.groupError - Error message to display
+ * @param {boolean} props.groupFiltersSubmitted - Whether filters are locked in
+ * @param {Function} props.groupCreate - Create a new session
+ * @param {Function} props.groupJoin - Join an existing session
+ * @param {Function} props.groupSubmitFilters - Submit/lock filters
+ * @param {Function} props.groupTriggerPick - Trigger the group pick
+ * @param {Function} props.groupLeave - Leave or end the session
+ * @returns {JSX.Element} The rendered Fork Around modal
+ */
+function GroupForkModal({
+  visible,
+  onClose,
+  groupStep,
+  groupCode,
+  groupName,
+  setGroupName,
+  groupJoinCode,
+  setGroupJoinCode,
+  groupLocationName,
+  setGroupLocationName,
+  groupHostName,
+  groupHostRadius,
+  savedLocations,
+  saveLocation,
+  deleteSavedLocation,
+  groupParticipants,
+  groupResult,
+  groupLoading,
+  groupError,
+  groupFiltersSubmitted,
+  groupCreate,
+  groupJoin,
+  groupSubmitFilters,
+  groupTriggerPick,
+  groupLeave,
+}) {
+  const [gRadius, setGRadius] = useState(3);
+  const [gMaxPrice, setGMaxPrice] = useState(2);
+  const [gMinRating, setGMinRating] = useState(RATING_DEFAULT);
+  const [gKeyword, setGKeyword] = useState('');
+  const [gExcludeKeyword, setGExcludeKeyword] = useState('');
+  const [gGroupSize, setGGroupSize] = useState('2-4');
+  const [gLocQuery, setGLocQuery] = useState('');
+  const [gLocSuggestions, setGLocSuggestions] = useState([]);
+  const [gLocCoords, setGLocCoords] = useState(null); // { latitude, longitude, label }
+  const gLocDebounceRef = useRef(null);
+
+  const radiusOptions = [1, 3, 5, 10];
+  const priceOptions = [1, 2, 3, 4];
+  const ratingOptions = [RATING_LOW, RATING_DEFAULT, RATING_HIGH, RATING_TOP];
+  const groupSizeOptions = ['2-4', '5-8', '8+'];
+  /**
+   * Returns a price label for the given level.
+   * @param {number} level - Price level 1-4
+   * @returns {string} Price label string
+   */
+  function priceLabel(level) {
+    if (level === 1) return '$';
+    if (level === 2) return '$$';
+    if (level === 3) return '$$$';
+    if (level === 4) return '$$$$';
+    return '';
+  }
+
+  /**
+   * Handle location search input with debounced autocomplete.
+   * Checks saved locations first, then falls back to API search.
+   * @param {string} text - search input
+   * @returns {void}
+   */
+  function handleLocQueryChange(text) {
+    setGLocQuery(text);
+    setGLocSuggestions([]);
+    if (gLocDebounceRef.current) clearTimeout(gLocDebounceRef.current);
+    if (text.trim().length >= 1) {
+      // Check saved locations immediately (no debounce)
+      const q = text.trim().toLowerCase();
+      const savedMatches = savedLocations
+        .filter((s) => s.label.toLowerCase().includes(q))
+        .map((s) => ({ ...s, isSaved: true, description: s.label, mainText: s.label }));
+      if (savedMatches.length > 0) {
+        setGLocSuggestions(savedMatches);
+      }
+    }
+    if (text.trim().length >= 3) {
+      gLocDebounceRef.current = setTimeout(async () => {
+        const { suggestions } = await fetchAddressSuggestions(text, null);
+        // Merge: saved matches first, then API results
+        const q = text.trim().toLowerCase();
+        const savedMatches = savedLocations
+          .filter((s) => s.label.toLowerCase().includes(q))
+          .map((s) => ({ ...s, isSaved: true, description: s.label, mainText: s.label }));
+        setGLocSuggestions([...savedMatches, ...suggestions]);
+      }, DEBOUNCE_DELAY);
+    }
+  }
+
+  /**
+   * Select a location from autocomplete suggestions.
+   * @param {object} suggestion - autocomplete suggestion (or saved location)
+   * @returns {Promise<void>}
+   */
+  async function selectGroupLocation(suggestion) {
+    setGLocSuggestions([]);
+    if (suggestion.isSaved) {
+      setGLocQuery(suggestion.label);
+      setGLocCoords({
+        latitude: suggestion.latitude,
+        longitude: suggestion.longitude,
+        label: suggestion.label,
+      });
+      setGroupLocationName(suggestion.label);
+      return;
+    }
+    setGLocQuery(suggestion.description);
+    const details = await getPlaceDetails(suggestion.placeId);
+    if (details?.geometry?.location) {
+      setGLocCoords({
+        latitude: details.geometry.location.lat,
+        longitude: details.geometry.location.lng,
+        label: suggestion.mainText || suggestion.description,
+      });
+      if (!groupLocationName) {
+        setGroupLocationName(suggestion.mainText || suggestion.description);
+      }
+    }
+  }
+
+  /** Submits the local filter state to the group session. @returns {void} */
+  function handleSubmitFilters() {
+    groupSubmitFilters({
+      radiusMiles: gRadius,
+      maxPrice: gMaxPrice,
+      minRating: gMinRating,
+      openNow: true,
+      hiddenGems: false,
+      cuisineKeyword: gKeyword,
+      excludeKeyword: gExcludeKeyword,
+      groupSize: gGroupSize,
+    });
+  }
+
+  const filterSummary = `\u2713 ${gRadius} mi \u00B7 ${priceLabel(gMaxPrice)} \u00B7 ${gMinRating.toFixed(1)}+ \u00B7 Group of ${gGroupSize}`;
+
+  /**
+   * Renders inline filter controls for group sessions.
+   * @returns {JSX.Element} Filter controls
+   */
+  function renderGroupFilters() {
+    return (
+      <View style={styles.groupFiltersWrap}>
+        <Text style={styles.groupFilterLabel}>How far?</Text>
+        <View style={styles.groupPillRow}>
+          {radiusOptions.map((r) => (
+            <TouchableOpacity
+              key={r}
+              style={[styles.groupPill, gRadius === r && styles.groupPillActive]}
+              onPress={() => setGRadius(r)}
+              accessibilityRole="button"
+              accessibilityLabel={`${r} mile radius`}
+            >
+              <Text style={[styles.groupPillText, gRadius === r && styles.groupPillTextActive]}>
+                {r} mi
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.groupFilterLabel}>Max price?</Text>
+        <View style={styles.groupPillRow}>
+          {priceOptions.map((p) => (
+            <TouchableOpacity
+              key={p}
+              style={[styles.groupPill, gMaxPrice === p && styles.groupPillActive]}
+              onPress={() => setGMaxPrice(p)}
+              accessibilityRole="button"
+              accessibilityLabel={`Max price ${priceLabel(p)}`}
+            >
+              <Text style={[styles.groupPillText, gMaxPrice === p && styles.groupPillTextActive]}>
+                {priceLabel(p)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.groupFilterLabel}>Min rating?</Text>
+        <View style={styles.groupPillRow}>
+          {ratingOptions.map((r) => (
+            <TouchableOpacity
+              key={r}
+              style={[styles.groupPill, gMinRating === r && styles.groupPillActive]}
+              onPress={() => setGMinRating(r)}
+              accessibilityRole="button"
+              accessibilityLabel={`Minimum rating ${r} stars`}
+            >
+              <Text style={[styles.groupPillText, gMinRating === r && styles.groupPillTextActive]}>
+                {r.toFixed(1)}+
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.groupFilterLabel}>Group size</Text>
+        <View style={styles.groupPillRow}>
+          {groupSizeOptions.map((s) => (
+            <TouchableOpacity
+              key={s}
+              style={[styles.groupPill, gGroupSize === s && styles.groupPillActive]}
+              onPress={() => setGGroupSize(s)}
+              accessibilityRole="button"
+              accessibilityLabel={`Group size ${s}`}
+            >
+              <Text style={[styles.groupPillText, gGroupSize === s && styles.groupPillTextActive]}>
+                {s}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.groupFilterLabel}>Cuisine</Text>
+        <TextInput
+          style={styles.groupInput}
+          placeholder="e.g. sushi, tacos, brunch..."
+          placeholderTextColor={THEME.textHint}
+          value={gKeyword}
+          onChangeText={setGKeyword}
+          maxLength={40}
+          accessibilityLabel="Cuisine keyword filter"
+        />
+
+        <Text style={styles.groupFilterLabel}>Not in the mood for</Text>
+        <TextInput
+          style={styles.groupInput}
+          placeholder="e.g. pizza, indian..."
+          placeholderTextColor={THEME.textHint}
+          value={gExcludeKeyword}
+          onChangeText={setGExcludeKeyword}
+          maxLength={100}
+          accessibilityLabel="Exclude cuisine filter"
+        />
+      </View>
+    );
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={styles.infoOverlay} accessibilityViewIsModal>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          activeOpacity={1}
+          onPress={onClose}
+          accessibilityLabel="Close fork around"
+          accessibilityRole="button"
+        />
+        <View style={styles.infoCard} accessibilityRole="none">
+          <TouchableOpacity
+            style={styles.infoClose}
+            onPress={onClose}
+            accessibilityLabel="Close"
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={22} color={THEME.textIcon} />
+          </TouchableOpacity>
+
+          {groupStep === 'menu' && (
+            <View>
+              <Text
+                style={[styles.infoHeading, styles.supportHeadingCenter]}
+                accessibilityRole="header"
+              >
+                Fork Around
+              </Text>
+              <Text style={[styles.infoText, styles.supportSubCenter]}>
+                Fork around and find out.
+              </Text>
+              <Text style={[styles.infoText, styles.supportSubCenter]}>
+                Pick a restaurant with friends.{'\n'}Set your filters, and let fate decide.
+              </Text>
+
+              <TextInput
+                style={styles.groupInput}
+                placeholder="Your name"
+                placeholderTextColor={THEME.textHint}
+                value={groupName}
+                onChangeText={setGroupName}
+                maxLength={20}
+                autoCapitalize="words"
+                accessibilityLabel="Your display name"
+              />
+
+              {savedLocations.length > 0 && (
+                <View style={styles.marginTop8}>
+                  <Text style={styles.groupFilterLabel}>Saved Spots</Text>
+                  <View style={styles.groupPillRow}>
+                    {savedLocations.map((s) => (
+                      <TouchableOpacity
+                        key={s.label}
+                        style={[
+                          styles.groupPill,
+                          gLocCoords?.label === s.label && styles.groupPillActive,
+                        ]}
+                        onPress={() => {
+                          setGLocCoords({
+                            latitude: s.latitude,
+                            longitude: s.longitude,
+                            label: s.label,
+                          });
+                          setGLocQuery(s.label);
+                          setGroupLocationName(s.label);
+                          setGLocSuggestions([]);
+                        }}
+                        onLongPress={() => {
+                          showAlert('Remove Spot?', `Delete "${s.label}" from saved spots?`, [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Delete',
+                              style: 'destructive',
+                              onPress: () => deleteSavedLocation(s.label),
+                            },
+                          ]);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Use saved location ${s.label}`}
+                        accessibilityHint="Long press to delete"
+                      >
+                        <Text
+                          style={[
+                            styles.groupPillText,
+                            gLocCoords?.label === s.label && styles.groupPillTextActive,
+                          ]}
+                        >
+                          {s.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              <TextInput
+                style={[styles.groupInput, styles.marginTop8]}
+                placeholder="Search address or type a saved spot name"
+                placeholderTextColor={THEME.textHint}
+                value={gLocQuery}
+                onChangeText={handleLocQueryChange}
+                maxLength={100}
+                autoCapitalize="words"
+                accessibilityLabel="Search for a location to center the group session"
+              />
+              {gLocSuggestions.length > 0 && (
+                <View style={styles.groupLocSuggestions}>
+                  {gLocSuggestions.map((s) => (
+                    <TouchableOpacity
+                      key={s.isSaved ? `saved-${s.label}` : s.placeId}
+                      style={styles.groupLocSuggestionRow}
+                      onPress={() => selectGroupLocation(s)}
+                      accessibilityRole="button"
+                    >
+                      {s.isSaved && <Ionicons name="bookmark" size={14} color={THEME.pop} />}
+                      <Text style={styles.groupLocSuggestionText} numberOfLines={1}>
+                        {s.isSaved ? ` ${s.description}` : s.description}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              {gLocCoords ? (
+                <View>
+                  <View style={styles.groupLocConfirmed}>
+                    <Ionicons name="location" size={14} color={THEME.pop} />
+                    <Text style={styles.groupLocConfirmedText} numberOfLines={1}>
+                      {gLocCoords.label}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setGLocCoords(null);
+                        setGLocQuery('');
+                        setGroupLocationName('');
+                      }}
+                      accessibilityLabel="Clear location"
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="close-circle" size={16} color={THEME.textHint} />
+                    </TouchableOpacity>
+                  </View>
+                  {!savedLocations.some((s) => s.label === gLocCoords.label) && (
+                    <TouchableOpacity
+                      style={styles.groupSaveSpotBtn}
+                      onPress={() => saveLocation(gLocCoords)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Save this location for future use"
+                    >
+                      <Ionicons name="bookmark-outline" size={14} color={THEME.pop} />
+                      <Text style={styles.groupSaveSpotText}>Save this spot</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : (
+                <Text style={styles.groupHintText}>
+                  {savedLocations.length > 0
+                    ? 'Tap a saved spot or search a new address.'
+                    : 'Search an address or leave blank to use your GPS.'}
+                </Text>
+              )}
+
+              <TextInput
+                style={[styles.groupInput, styles.marginTop8]}
+                placeholder="Nickname for this spot (e.g. The Office)"
+                placeholderTextColor={THEME.textHint}
+                value={groupLocationName}
+                onChangeText={setGroupLocationName}
+                maxLength={60}
+                autoCapitalize="words"
+                accessibilityLabel="Friendly name for your location"
+              />
+              <Text style={styles.groupHintText}>
+                Friends will see this so they know where you{'\u2019'}re searching.
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.supportBtn, { backgroundColor: THEME.accent }]}
+                onPress={() => groupCreate(gLocCoords)}
+                disabled={groupLoading}
+                accessibilityRole="button"
+                accessibilityLabel="Host a new group session"
+              >
+                <Ionicons name="add-circle" size={18} color={THEME.white} />
+                <Text style={styles.supportBtnText}>
+                  {groupLoading ? 'Creating\u2026' : 'Host a Session'}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.groupDivider}>
+                <View style={styles.groupDividerLine} />
+                <Text style={styles.groupDividerText}>or</Text>
+                <View style={styles.groupDividerLine} />
+              </View>
+
+              <TextInput
+                style={styles.groupInput}
+                placeholder="Enter 4-letter code"
+                placeholderTextColor={THEME.textHint}
+                value={groupJoinCode}
+                onChangeText={(t) => setGroupJoinCode(t.toUpperCase())}
+                maxLength={4}
+                autoCapitalize="characters"
+                accessibilityLabel="Session code to join"
+              />
+
+              <TouchableOpacity
+                style={[styles.supportBtn, { backgroundColor: THEME.pop }]}
+                onPress={groupJoin}
+                disabled={groupLoading}
+                accessibilityRole="button"
+                accessibilityLabel="Join an existing group session"
+              >
+                <Ionicons name="enter" size={18} color={THEME.white} />
+                <Text style={styles.supportBtnText}>
+                  {groupLoading ? 'Joining\u2026' : 'Join a Session'}
+                </Text>
+              </TouchableOpacity>
+
+              {!!groupError && <Text style={styles.groupError}>{groupError}</Text>}
+            </View>
+          )}
+
+          {groupStep === 'hosting' && (
+            <ScrollView style={styles.groupScrollView} showsVerticalScrollIndicator={false}>
+              <Text
+                style={[styles.infoHeading, styles.supportHeadingCenter]}
+                accessibilityRole="header"
+              >
+                Share This Code
+              </Text>
+              <Text
+                style={styles.groupCodeDisplay}
+                selectable
+                accessibilityLabel={`Session code: ${groupCode.split('').join(' ')}`}
+              >
+                {groupCode}
+              </Text>
+              <TouchableOpacity
+                style={[styles.supportBtn, { backgroundColor: THEME.accent }]}
+                onPress={() => {
+                  const url = `https://forkit-web.vercel.app/group?code=${groupCode}`;
+                  Share.share({
+                    message: `Fork around and find out! Enter code ${groupCode} in the app, or join from your browser: ${url}`,
+                  }).catch(() => {});
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Share session code with friends"
+              >
+                <Ionicons name="share-social" size={18} color={THEME.white} />
+                <Text style={styles.supportBtnText}>Share Code</Text>
+              </TouchableOpacity>
+              {groupLocationName ? (
+                <Text style={styles.groupLocationContext}>Searching near {groupLocationName}</Text>
+              ) : null}
+              <Text style={[styles.infoText, styles.supportSubCenter]}>
+                Friends enter this code to join.{'\n'}Pick when everyone{'\u2019'}s ready.
+              </Text>
+
+              <View style={styles.groupParticipantList}>
+                {groupParticipants.map((p) => (
+                  <GroupParticipantRow key={p.name} participant={p} />
+                ))}
+              </View>
+
+              {!groupFiltersSubmitted ? (
+                <>
+                  {renderGroupFilters()}
+                  <TouchableOpacity
+                    style={[styles.supportBtn, { backgroundColor: THEME.pop }]}
+                    onPress={handleSubmitFilters}
+                    disabled={groupLoading}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="checkmark-circle" size={18} color={THEME.white} />
+                    <Text style={styles.supportBtnText}>
+                      {groupLoading ? 'Submitting\u2026' : 'Lock In My Filters'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <Text style={styles.groupReadyText}>{filterSummary}</Text>
+              )}
+
+              {(() => {
+                const readyCount = groupParticipants.filter((p) => p.ready).length;
+                const totalCount = groupParticipants.length;
+                const notReady = totalCount - readyCount;
+                if (readyCount < 2) return null;
+                return (
+                  <>
+                    {notReady > 0 && (
+                      <Text style={styles.groupReadyHint}>
+                        {readyCount} of {totalCount} ready — go whenever you want
+                      </Text>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.supportBtn, styles.groupPickBtn]}
+                      onPress={groupTriggerPick}
+                      disabled={groupLoading}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.supportBtnText}>
+                        {groupLoading ? 'Picking\u2026' : 'Fork It for Everyone'}
+                      </Text>
+                      {!groupLoading && <ForkIcon size={16} color={THEME.white} />}
+                    </TouchableOpacity>
+                  </>
+                );
+              })()}
+
+              {!!groupError && <Text style={styles.groupError}>{groupError}</Text>}
+
+              <TouchableOpacity
+                onPress={groupLeave}
+                style={styles.groupLeaveBtn}
+                accessibilityRole="button"
+              >
+                <Text style={styles.groupLeaveText}>End Session</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+
+          {groupStep === 'waiting' && (
+            <ScrollView style={styles.groupScrollView} showsVerticalScrollIndicator={false}>
+              <Text
+                style={[styles.infoHeading, styles.supportHeadingCenter]}
+                accessibilityRole="header"
+              >
+                Joined: {groupCode}
+              </Text>
+              {groupLocationName || groupHostName ? (
+                <Text style={styles.groupLocationContext}>
+                  {groupHostName || 'The host'} is searching near
+                  {groupLocationName ? ` ${groupLocationName}` : ' their location'}
+                  {groupHostRadius ? ` (within ${groupHostRadius} mi)` : ''}.
+                </Text>
+              ) : null}
+              <Text style={[styles.infoText, styles.supportSubCenter]}>
+                Set your filters below, then lock them in.
+              </Text>
+
+              <View style={styles.groupParticipantList}>
+                {groupParticipants.map((p) => (
+                  <GroupParticipantRow key={p.name} participant={p} />
+                ))}
+              </View>
+
+              {!groupFiltersSubmitted ? (
+                <>
+                  {renderGroupFilters()}
+                  <TouchableOpacity
+                    style={[styles.supportBtn, { backgroundColor: THEME.pop }]}
+                    onPress={handleSubmitFilters}
+                    disabled={groupLoading}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="checkmark-circle" size={18} color={THEME.white} />
+                    <Text style={styles.supportBtnText}>
+                      {groupLoading ? 'Submitting\u2026' : 'Lock In My Filters'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <Text style={styles.groupReadyText}>
+                  {filterSummary}
+                  {'\n'}Waiting for the host to pick\u2026
+                </Text>
+              )}
+
+              {!!groupError && <Text style={styles.groupError}>{groupError}</Text>}
+
+              <TouchableOpacity
+                onPress={groupLeave}
+                style={styles.groupLeaveBtn}
+                accessibilityRole="button"
+              >
+                <Text style={styles.groupLeaveText}>Leave Session</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
+
+          {groupStep === 'result' && groupResult && (
+            <View>
+              <Text
+                style={[styles.infoHeading, styles.supportHeadingCenter]}
+                accessibilityRole="header"
+              >
+                The Group Has Spoken!
+              </Text>
+              <Text style={styles.groupResultName}>{groupResult.name}</Text>
+              {groupResult.rating && (
+                <Text style={styles.groupResultDetail}>
+                  {'⭐'.repeat(Math.round(groupResult.rating))} {groupResult.rating}
+                </Text>
+              )}
+              {groupResult.vicinity && (
+                <Text style={styles.groupResultDetail}>{groupResult.vicinity}</Text>
+              )}
+              <TouchableOpacity
+                style={[styles.supportBtn, styles.groupDirectionsBtn]}
+                onPress={() => {
+                  const { lat, lng } = groupResult.geometry?.location || {};
+                  if (lat && lng) {
+                    Linking.openURL(
+                      `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
+                    );
+                  }
+                }}
+                accessibilityRole="link"
+              >
+                <Ionicons name="navigate" size={18} color={THEME.white} />
+                <Text style={styles.supportBtnText}>Get Directions</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={onClose}
+                style={[styles.groupLeaveBtn, styles.marginTop16]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.groupLeaveText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ==============================
 // APP
 // ==============================
 
@@ -760,11 +1739,13 @@ export default function App() {
 
   // Filters
   const [travelMode, setTravelMode] = useState('drive'); // 'walk' or 'drive'
+  const [forkMode, setForkMode] = useState('solo'); // 'solo' or 'group'
   const [radiusMiles, setRadiusMiles] = useState(3);
   const [openNow, setOpenNow] = useState(true);
   const [maxPrice, setMaxPrice] = useState(2);
   const [minRating, setMinRating] = useState(4.0);
   const [cuisineKeyword, setCuisineKeyword] = useState('');
+  const [excludeKeyword, setExcludeKeyword] = useState('');
   const [hiddenGems, setHiddenGems] = useState(true);
 
   // Custom search location (null = GPS mode)
@@ -816,6 +1797,29 @@ export default function App() {
   const locationDebounceRef = useRef(null);
   const easterEggTaps = useRef(0);
 
+  // Usage tracking & Pro status
+  const [forkUsage, setForkUsage] = useState({ solo: 0, group: 0, month: 0, year: 0 });
+  const [proExpiresAt, setProExpiresAt] = useState(0);
+
+  // Fork Around state
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [groupStep, setGroupStep] = useState('menu'); // menu | hosting | joining | waiting | result
+  const [groupCode, setGroupCode] = useState('');
+  const [groupHostId, setGroupHostId] = useState(null);
+  const [groupParticipantId, setGroupParticipantId] = useState(null);
+  const [groupName, setGroupName] = useState('');
+  const [groupJoinCode, setGroupJoinCode] = useState('');
+  const [groupLocationName, setGroupLocationName] = useState('');
+  const [groupHostName, setGroupHostName] = useState('');
+  const [groupHostRadius, setGroupHostRadius] = useState(null);
+  const [groupParticipants, setGroupParticipants] = useState([]);
+  const [groupResult, setGroupResult] = useState(null);
+  const [groupLoading, setGroupLoading] = useState(false);
+  const [groupError, setGroupError] = useState('');
+  const [groupFiltersSubmitted, setGroupFiltersSubmitted] = useState(false);
+  const groupPollRef = useRef(null);
+  const [savedLocations, setSavedLocations] = useState([]);
+
   // Animations
   const spin = useRef(new Animated.Value(0)).current;
   const bounce = useRef(new Animated.Value(0)).current;
@@ -824,6 +1828,16 @@ export default function App() {
   const isForkingRef = useRef(false);
   const forkTapsRef = useRef([]);
   const walkSuggestedRef = useRef(false);
+
+  // API fetch counter for tip prompt
+  const apiFetchCountRef = useRef(0);
+
+  // Pool cache — stores fetched restaurants so subsequent taps don't hit the API
+  const poolCacheRef = useRef({
+    results: [], // raw results from backend
+    fetchedAt: 0, // Date.now() when fetched
+    filterKey: '', // serialized filter state when fetched
+  });
 
   const spinDeg = spin.interpolate({
     inputRange: [0, 1],
@@ -881,25 +1895,33 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const [favData, blockData, customData, travelData] = await Promise.all([
+        const raw = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.FAVORITES),
           AsyncStorage.getItem(STORAGE_KEYS.BLOCKED),
           AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_PLACES),
           AsyncStorage.getItem(STORAGE_KEYS.TRAVEL_MODE),
+          AsyncStorage.getItem(STORAGE_KEYS.API_FETCH_COUNT),
+          AsyncStorage.getItem(STORAGE_KEYS.SAVED_LOCATIONS),
+          AsyncStorage.getItem(STORAGE_KEYS.FORK_USAGE),
+          AsyncStorage.getItem(STORAGE_KEYS.PRO_EXPIRES),
         ]);
-        if (favData) {
-          const migrated = JSON.parse(favData).map(migrateFavorite);
-          setFavorites(migrated);
-          safeStore(STORAGE_KEYS.FAVORITES, migrated);
+        const s = parseStoredState(raw);
+        if (s.favorites) {
+          setFavorites(s.favorites);
+          safeStore(STORAGE_KEYS.FAVORITES, s.favorites);
         }
-        if (blockData) setBlockedIds(JSON.parse(blockData));
-        if (customData) setCustomPlaces(JSON.parse(customData));
-        if (travelData === 'walk' || travelData === 'drive') {
-          setTravelMode(travelData);
-          if (travelData === 'walk') {
+        if (s.blockedIds) setBlockedIds(s.blockedIds);
+        if (s.customPlaces) setCustomPlaces(s.customPlaces);
+        if (s.travelMode) {
+          setTravelMode(s.travelMode);
+          if (s.travelMode === 'walk') {
             setRadiusMiles((prev) => (prev > WALK_RADIUS_MAX ? WALK_RADIUS_DEFAULT : prev));
           }
         }
+        if (s.fetchCount) apiFetchCountRef.current = s.fetchCount;
+        if (s.savedLocations) setSavedLocations(s.savedLocations);
+        if (s.forkUsage) setForkUsage(s.forkUsage);
+        if (s.proExpiresAt) setProExpiresAt(s.proExpiresAt);
       } catch (_) {
         // Storage read failures are non-critical — app works with defaults
       }
@@ -1030,7 +2052,6 @@ export default function App() {
         opennow: openNow,
         maxPrice,
         minRating,
-        excludedPlaceIds: [...recentlyShown, ...blockedIds.map((b) => b.place_id)].slice(0, 20),
       }),
       signal: controller.signal,
     });
@@ -1045,48 +2066,22 @@ export default function App() {
     return Array.isArray(data.results) ? data.results : [];
   }
 
-  /**
-   * Returns minutes until the restaurant closes, or null if unknown/open 24hrs.
-   * Compares device local time against the place's closing periods.
-   * Note: assumes device timezone matches the restaurant's timezone.
-   * @param {object|null} openingHours - opening_hours from the Places API response
-   * @returns {number|null} minutes until closing, or null if no closing data
-   */
-  function getMinutesUntilClosing(openingHours) {
-    if (!openingHours?.periods?.length) return null;
-    const now = new Date();
-    const currentDay = now.getDay();
-    const currentMinutes = now.getHours() * MINUTES_PER_HOUR + now.getMinutes();
-
-    // Check for a closing time later today
-    for (const period of openingHours.periods) {
-      if (!period.close || period.close.day !== currentDay) continue;
-      const closeMinutes = period.close.hour * MINUTES_PER_HOUR + period.close.minute;
-      if (closeMinutes > currentMinutes) return closeMinutes - currentMinutes;
-    }
-
-    // Check for overnight closing (closes tomorrow before 6am)
-    const tomorrow = (currentDay + 1) % DAYS_PER_WEEK;
-    for (const period of openingHours.periods) {
-      if (!period.close || period.close.day !== tomorrow) continue;
-      const closeMinutes = period.close.hour * MINUTES_PER_HOUR + period.close.minute;
-      if (closeMinutes < OVERNIGHT_CUTOFF_MIN) {
-        return MINUTES_PER_DAY - currentMinutes + closeMinutes;
-      }
-    }
-
-    return null;
-  }
-
-  function filterAndEnrichResults(raw) {
+  function filterAndEnrichResults(raw, recentOverride) {
+    const recentSet = new Set(recentOverride !== undefined ? recentOverride : recentlyShown);
+    const excludeTerms = excludeKeyword
+      .split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
     let results = raw.filter((r) => {
+      if (recentSet.has(r.place_id)) return false;
       if (isBlocked(r.place_id, r.name, blockedIds)) return false;
       if (hiddenGems && looksLikeChain(r.name, r.user_ratings_total)) return false;
+      if (matchesExclude(r, excludeTerms)) return false;
       const mins = getMinutesUntilClosing(r.opening_hours);
       return mins === null || mins >= CLOSING_SOON_EXCLUDE_MIN;
     });
     const eligibleCustom = customPlaces.filter(
-      (cp) => !recentlyShown.includes(cp.place_id) && !isBlocked(cp.place_id, cp.name, blockedIds),
+      (cp) => !recentSet.has(cp.place_id) && !isBlocked(cp.place_id, cp.name, blockedIds),
     );
     if (eligibleCustom.length > 0) {
       results = [...results, ...eligibleCustom];
@@ -1113,6 +2108,282 @@ export default function App() {
     }, WALK_SUGGEST_DELAY);
   }
 
+  // ──── Fork Around functions ────
+
+  function stopGroupPolling() {
+    if (groupPollRef.current) {
+      clearInterval(groupPollRef.current);
+      groupPollRef.current = null;
+    }
+  }
+
+  function resetGroupState() {
+    stopGroupPolling();
+    setGroupStep('menu');
+    setGroupCode('');
+    setGroupHostId(null);
+    setGroupParticipantId(null);
+    setGroupName('');
+    setGroupJoinCode('');
+    setGroupLocationName('');
+    setGroupHostName('');
+    setGroupHostRadius(null);
+    setGroupParticipants([]);
+    setGroupResult(null);
+    setGroupLoading(false);
+    setGroupError('');
+    setGroupFiltersSubmitted(false);
+  }
+
+  /** Dismiss the group modal and clean up state. @returns {void} */
+  function dismissGroupModal() {
+    stopGroupPolling();
+    setShowGroupModal(false);
+    setTimeout(resetGroupState, GROUP_MODAL_CLOSE_DELAY);
+  }
+
+  /** Close the group modal, with confirmation if a session is active. */
+  function closeGroupModal() {
+    const config = getCloseModalConfig(groupStep, !!groupHostId);
+    if (!config) {
+      dismissGroupModal();
+      return;
+    }
+    showAlert(config.title, config.message, [
+      { text: 'Stay', style: 'cancel' },
+      {
+        text: config.confirmText,
+        style: 'destructive',
+        onPress: () => {
+          groupFetch('leave', { code: groupCode, participantId: groupParticipantId }).catch(
+            () => {},
+          );
+          dismissGroupModal();
+        },
+      },
+    ]);
+  }
+
+  /**
+   * Poll the session status every 2 seconds.
+   * @param {string} code - session code
+   */
+  function startGroupPolling(code) {
+    stopGroupPolling();
+    groupPollRef.current = setInterval(async () => {
+      try {
+        const response = await fetch(
+          `${BACKEND_URL}/api/group/status?code=${encodeURIComponent(code)}`,
+        );
+        if (!response.ok) {
+          if (response.status === GROUP_SESSION_EXPIRED_STATUS) {
+            stopGroupPolling();
+            setGroupError('Session expired or ended by host.');
+            setGroupStep('menu');
+          }
+          return;
+        }
+        const data = await response.json();
+        setGroupParticipants(data.participants || []);
+        if (data.status === 'done' && data.result) {
+          stopGroupPolling();
+          setGroupResult(data.result);
+          setGroupStep('result');
+        }
+      } catch (_) {
+        // Polling failure is non-critical — will retry on next interval
+      }
+    }, GROUP_POLL_INTERVAL);
+  }
+
+  /**
+   * Helper to POST to group API endpoints.
+   * @param {string} endpoint - e.g. 'create', 'join'
+   * @param {object} body - request body
+   * @returns {Promise<object>} parsed response
+   */
+  async function groupFetch(endpoint, body) {
+    const response = await fetch(`${BACKEND_URL}/api/group/${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `${endpoint} failed`);
+    return data;
+  }
+
+  /**
+   * Host creates a new group session.
+   * @param {object|null} overrideCoords - optional coordinates from location search
+   * @param {number} overrideCoords.latitude - latitude
+   * @param {number} overrideCoords.longitude - longitude
+   * @returns {Promise<void>}
+   */
+  async function groupCreate(overrideCoords) {
+    if (!groupName.trim()) {
+      setGroupError('Enter your name first.');
+      return;
+    }
+    setGroupLoading(true);
+    setGroupError('');
+    let coords;
+    if (overrideCoords?.latitude && overrideCoords?.longitude) {
+      coords = { latitude: overrideCoords.latitude, longitude: overrideCoords.longitude };
+    } else if (customLocation) {
+      coords = { latitude: customLocation.latitude, longitude: customLocation.longitude };
+    } else {
+      coords = await ensureLocation().catch(() => null);
+    }
+    if (!coords) {
+      setGroupError('Location is required to host. Search an address or enable GPS.');
+      setGroupLoading(false);
+      return;
+    }
+    try {
+      const data = await groupFetch('create', {
+        hostName: groupName.trim(),
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        locationName: groupLocationName.trim(),
+      });
+      setGroupCode(data.code);
+      setGroupHostId(data.hostId);
+      setGroupParticipantId(data.hostId);
+      setGroupStep('hosting');
+      startGroupPolling(data.code);
+    } catch (_) {
+      setGroupError('Could not create session. Try again.');
+    } finally {
+      setGroupLoading(false);
+    }
+  }
+
+  /** Join an existing group session. @returns {Promise<void>} */
+  async function groupJoin() {
+    if (!groupName.trim()) {
+      setGroupError('Enter your name first.');
+      return;
+    }
+    if (groupJoinCode.trim().length !== 4) {
+      setGroupError('Enter the 4-letter code from the host.');
+      return;
+    }
+    setGroupLoading(true);
+    setGroupError('');
+    try {
+      const data = await groupFetch('join', {
+        code: groupJoinCode.trim().toUpperCase(),
+        name: groupName.trim(),
+      });
+      setGroupCode(data.code);
+      setGroupParticipantId(data.participantId);
+      if (data.locationName) setGroupLocationName(data.locationName);
+      if (data.hostName) setGroupHostName(data.hostName);
+      if (data.hostRadius) setGroupHostRadius(data.hostRadius);
+      setGroupParticipants(data.participants || []);
+      setGroupStep('waiting');
+      startGroupPolling(data.code);
+    } catch (e) {
+      setGroupError(e.message || 'Could not join session.');
+    } finally {
+      setGroupLoading(false);
+    }
+  }
+
+  /**
+   * Submit filters to the group session.
+   * @param {object} filters - Filter preferences from the group modal
+   * @param {number} filters.radiusMiles - Search radius in miles
+   * @param {number} filters.maxPrice - Maximum price level (1-4)
+   * @param {number} filters.minRating - Minimum rating threshold
+   * @param {boolean} filters.openNow - Whether to filter to open restaurants
+   * @param {boolean} filters.hiddenGems - Whether to filter to hidden gems
+   * @param {string} filters.cuisineKeyword - Cuisine keyword filter
+   * @param {string} filters.groupSize - Group size category
+   * @returns {Promise<void>}
+   */
+  async function groupSubmitFilters(filters) {
+    setGroupLoading(true);
+    setGroupError('');
+    try {
+      const data = await groupFetch('filters', {
+        code: groupCode,
+        participantId: groupParticipantId,
+        filters: {
+          radiusMiles: filters.radiusMiles,
+          maxPrice: filters.maxPrice,
+          minRating: filters.minRating,
+          openNow: filters.openNow,
+          hiddenGems: filters.hiddenGems,
+          cuisineKeyword: (filters.cuisineKeyword || '').trim(),
+          groupSize: filters.groupSize,
+        },
+      });
+      setGroupParticipants(data.participants || []);
+      setGroupFiltersSubmitted(true);
+    } catch (_) {
+      setGroupError('Could not submit filters. Try again.');
+    } finally {
+      setGroupLoading(false);
+    }
+  }
+
+  /**
+   * Host triggers the group pick.
+   */
+  async function groupTriggerPick() {
+    setGroupLoading(true);
+    setGroupError('');
+    try {
+      const data = await groupFetch('pick', { code: groupCode, hostId: groupHostId });
+      if (data.status === 'no_results') {
+        setGroupError(data.message);
+        setGroupLoading(false);
+      } else {
+        incrementUsage('group');
+      }
+      // Stay in loading state — result will arrive through polling
+    } catch (e) {
+      setGroupError(e.message || 'Pick failed. Try again.');
+      setGroupLoading(false);
+    }
+  }
+
+  /**
+   * Leave the current group session.
+   */
+  async function groupLeave() {
+    groupFetch('leave', { code: groupCode, participantId: groupParticipantId }).catch(() => {});
+    closeGroupModal();
+  }
+
+  /**
+   * Save a location for quick reuse.
+   * @param {object} loc - { label, latitude, longitude }
+   * @returns {void}
+   */
+  function saveLocation(loc) {
+    const exists = savedLocations.some((s) => s.label.toLowerCase() === loc.label.toLowerCase());
+    if (exists) return;
+    const updated = [...savedLocations, loc].slice(-MAX_SAVED_LOCATIONS);
+    setSavedLocations(updated);
+    safeStore(STORAGE_KEYS.SAVED_LOCATIONS, updated);
+  }
+
+  /**
+   * Delete a saved location by label.
+   * @param {string} label - location label to remove
+   * @returns {void}
+   */
+  function deleteSavedLocation(label) {
+    const updated = savedLocations.filter((s) => s.label !== label);
+    setSavedLocations(updated);
+    safeStore(STORAGE_KEYS.SAVED_LOCATIONS, updated);
+  }
+
+  // ──── End Fork Around functions ────
+
   async function runSlotReveal(results) {
     const cycles = Math.min(SLOT_MAX_CYCLES, Math.max(SLOT_MIN_CYCLES, results.length));
     const forkEmojis = ['🍴', '🥄', '🔱', '⚡'];
@@ -1125,9 +2396,132 @@ export default function App() {
     }
   }
 
+  /**
+   * Build a cache key from the current filter/location state.
+   * When any of these change, the pool must be re-fetched.
+   * @param {{latitude: number, longitude: number}} coords - user coordinates
+   * @returns {string} serialized filter key
+   */
+  function buildFilterKey(coords) {
+    return JSON.stringify({
+      lat: coords.latitude,
+      lng: coords.longitude,
+      r: radiusMeters,
+      kw: cuisineKeyword.trim(),
+      on: openNow,
+      mp: maxPrice,
+      mr: minRating,
+    });
+  }
+
+  /**
+   * Check if the user has an active Pro subscription.
+   * @returns {boolean} true if Pro is active
+   */
+  function isPro() {
+    return proExpiresAt > Date.now();
+  }
+
+  /**
+   * Get the current month's usage, auto-resetting if the month has changed.
+   * @returns {{solo: number, group: number, month: number, year: number}}
+   */
+  function getCurrentUsage() {
+    const now = new Date();
+    if (forkUsage.month === now.getMonth() && forkUsage.year === now.getFullYear()) {
+      return forkUsage;
+    }
+    // New month — reset
+    const reset = { solo: 0, group: 0, month: now.getMonth(), year: now.getFullYear() };
+    setForkUsage(reset);
+    safeStore(STORAGE_KEYS.FORK_USAGE, reset);
+    return reset;
+  }
+
+  /**
+   * Increment the fork usage counter and persist it.
+   * @param {'solo' | 'group'} type - which counter to increment
+   */
+  function incrementUsage(type) {
+    const now = new Date();
+    const current = getCurrentUsage();
+    const updated = { ...current, month: now.getMonth(), year: now.getFullYear() };
+    updated[type === 'solo' ? 'solo' : 'group'] += 1;
+    setForkUsage(updated);
+    safeStore(STORAGE_KEYS.FORK_USAGE, updated);
+  }
+
+  /**
+   * Check if the user has quota for the given fork type. Shows paywall if not.
+   * @param {'solo' | 'group'} type - which quota to check
+   * @returns {boolean} true if allowed
+   */
+  function checkQuota(type) {
+    if (isPro()) return true;
+    const usage = getCurrentUsage();
+    const limit = type === 'solo' ? FREE_SOLO_FORKS : FREE_GROUP_FORKS;
+    const count = type === 'solo' ? usage.solo : usage.group;
+    if (count < limit) return true;
+    showPaywall(type);
+    return false;
+  }
+
+  /**
+   * Show the upgrade paywall dialog.
+   * @param {'solo' | 'group'} type - which limit was hit
+   */
+  function showPaywall(type) {
+    const remaining =
+      type === 'solo'
+        ? `You've used all ${FREE_SOLO_FORKS} free forks this month.`
+        : "You've used your free Fork Around session this month.";
+    showAlert(
+      'Upgrade to ForkIt! Pro',
+      `${remaining}\n\nGo Pro for ${PRO_PRICE_LABEL} — unlimited solo forks and Fork Around sessions.\n\nOr wait until the 1st for your free forks to reset.`,
+      [
+        { text: 'Not Now', style: 'cancel' },
+        {
+          text: 'Go Pro',
+          onPress: () => {
+            // TODO: Replace with real IAP purchase flow
+            const expires = Date.now() + PRO_DURATION_DAYS * MS_PER_DAY;
+            setProExpiresAt(expires);
+            AsyncStorage.setItem(STORAGE_KEYS.PRO_EXPIRES, String(expires)).catch(() => {});
+            showToast('Welcome to Pro! Unlimited forks unlocked.', 'success', TOAST_LONG);
+          },
+        },
+      ],
+    );
+  }
+
+  /**
+   * Increment the API fetch counter and maybe show a tip prompt.
+   * Called only when we actually hit the backend (not from cache).
+   */
+  function trackApiFetch() {
+    const count = ++apiFetchCountRef.current;
+    AsyncStorage.setItem(STORAGE_KEYS.API_FETCH_COUNT, String(count)).catch(() => {});
+    const pastFirst = count - TIP_PROMPT_FIRST;
+    if (count === TIP_PROMPT_FIRST || (pastFirst > 0 && pastFirst % TIP_PROMPT_INTERVAL === 0)) {
+      setTimeout(() => {
+        showAlert(
+          'You love ForkIt!',
+          "You've been using this app a lot — awesome! Did you know each search costs real money " +
+            'in Google API fees? If ForkIt has helped you find great food, consider tipping the ' +
+            'developer to help keep it free for everyone.',
+          [
+            { text: 'Maybe Later', style: 'cancel' },
+            { text: 'Support ForkIt', onPress: () => setShowSupport(true) },
+          ],
+        );
+      }, SUPPORT_MODAL_DELAY);
+    }
+  }
+
   async function forkIt() {
     if (isForkingRef.current) return;
     if (isThrottled()) return;
+    if (!checkQuota('solo')) return;
 
     isForkingRef.current = true;
 
@@ -1177,8 +2571,37 @@ export default function App() {
         return;
       }
 
-      const raw = await fetchNearbyPlaces(currentCoords);
-      const results = filterAndEnrichResults(raw);
+      // Check if we can reuse the cached pool
+      const currentFilterKey = buildFilterKey(currentCoords);
+      const cache = poolCacheRef.current;
+      const cacheAge = Date.now() - cache.fetchedAt;
+      const cacheValid =
+        cache.results.length > 0 &&
+        cache.filterKey === currentFilterKey &&
+        cacheAge < POOL_STALE_MS;
+
+      let raw;
+      if (cacheValid) {
+        raw = cache.results;
+      } else {
+        raw = await fetchNearbyPlaces(currentCoords);
+        // Store the full unfiltered pool in cache
+        poolCacheRef.current = {
+          results: raw,
+          fetchedAt: Date.now(),
+          filterKey: currentFilterKey,
+        };
+        trackApiFetch();
+      }
+
+      let results = filterAndEnrichResults(raw);
+
+      // If the pool has places but all were recently shown, reset and cycle again
+      if (!results.length && raw.length > 0 && recentlyShown.length > 0) {
+        setRecentlyShown([]);
+        results = filterAndEnrichResults(raw, []);
+      }
+
       setPoolCount(results.length);
       maybeNudgeWalkMode(results.length);
 
@@ -1195,19 +2618,18 @@ export default function App() {
       await sleep(DRAMATIC_PAUSE);
 
       setPicked(chosen);
+      incrementUsage('solo');
       setSlotText('');
       setFiltersExpanded(false);
       setStatusLine(pickRandom(SUCCESS_LINES));
       setForkingLine('');
       await haptics.notificationAsync(haptics.NotificationFeedbackType.Success);
-      const closingMins = getMinutesUntilClosing(chosen.opening_hours);
-      if (closingMins !== null && closingMins <= CLOSING_SOON_WARN_MIN) {
-        let hurryMsg = 'Drive safely!';
-        if (travelMode === 'walk' && radiusMiles <= WALK_CLOSE_RADIUS) {
-          hurryMsg = 'Get walking!';
-        } else if (travelMode === 'walk') {
-          hurryMsg = 'Better hurry!';
-        }
+      const hurryMsg = getClosingSoonToast(
+        getMinutesUntilClosing(chosen.opening_hours),
+        travelMode,
+        radiusMiles,
+      );
+      if (hurryMsg) {
         showToast(`Closing soon — ${hurryMsg}`, 'warn', TOAST_LONG);
       } else {
         showToast('Forking complete. Bon appétit! 🍴', 'success', TOAST_DEFAULT);
@@ -1295,6 +2717,7 @@ export default function App() {
                 <ForkIcon size={44} color={THEME.accent} rotation="0deg" />
               </View>
             </View>
+            <Text style={styles.subtitle}>RANDOM RESTAURANT PICKER</Text>
           </View>
 
           {/* Hero */}
@@ -1303,14 +2726,35 @@ export default function App() {
               {statusLine} <Text style={styles.heroBold}>✨</Text>
             </Text>
 
-            <PrimaryButton
-              label={loading ? 'Picking…' : 'Just Fork It'}
-              onPress={forkIt}
-              disabled={loading}
-              loading={loading}
-              spinDeg={spinDeg}
-              bounceY={bounceY}
-            />
+            {forkMode === 'solo' ? (
+              <PrimaryButton
+                label={loading ? 'Picking…' : 'Just Fork It'}
+                onPress={forkIt}
+                disabled={loading}
+                loading={loading}
+                spinDeg={spinDeg}
+                bounceY={bounceY}
+              />
+            ) : (
+              <PrimaryButton
+                label="Fork Around"
+                icon="people"
+                onPress={() => {
+                  if (checkQuota('group')) {
+                    resetGroupState();
+                    setShowGroupModal(true);
+                  }
+                }}
+                disabled={false}
+                loading={false}
+                spinDeg={spinDeg}
+                bounceY={bounceY}
+              />
+            )}
+
+            {!isPro() && !loading && (
+              <UsageHint mode={forkMode} usage={getCurrentUsage()} onPaywall={showPaywall} />
+            )}
 
             {!!forkingLine && loading ? (
               <Text style={styles.forkingLine}>{forkingLine}</Text>
@@ -1455,6 +2899,23 @@ export default function App() {
                   />
                 </View>
 
+                <Text style={styles.label}>Not in the mood for (optional)</Text>
+                <View style={styles.inputWrap}>
+                  <Ionicons name="close-circle" size={16} color={THEME.textSubtle} />
+                  <TextInput
+                    value={excludeKeyword}
+                    onChangeText={setExcludeKeyword}
+                    placeholder="pizza, indian, sushi…"
+                    placeholderTextColor={THEME.textFaint}
+                    style={styles.input}
+                    accessibilityLabel="Exclude cuisine filter"
+                    returnKeyType="search"
+                    keyboardAppearance="dark"
+                    autoCorrect={false}
+                    onSubmitEditing={forkIt}
+                  />
+                </View>
+
                 <View style={styles.toggleRow}>
                   <Text style={styles.toggleLabel}>Open now</Text>
                   <Chip
@@ -1506,64 +2967,25 @@ export default function App() {
               </View>
             )}
 
-            <View style={styles.featurePills}>
-              <TouchableOpacity
-                onPress={() => {
-                  const next = travelMode === 'drive' ? 'walk' : 'drive';
-                  setTravelMode(next);
-                  AsyncStorage.setItem(STORAGE_KEYS.TRAVEL_MODE, next).catch(() => {});
-                  if (next === 'walk' && radiusMiles > WALK_RADIUS_MAX)
-                    setRadiusMiles(WALK_RADIUS_DEFAULT);
-                  if (next === 'drive' && radiusMiles < DRIVE_RADIUS_MIN)
-                    setRadiusMiles(DRIVE_RADIUS_DEFAULT);
-                }}
-                style={[
-                  styles.footerActionBtn,
-                  {
-                    backgroundColor: travelMode === 'walk' ? THEME.popBgMedium : THEME.surfaceHover,
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Switch to ${travelMode === 'walk' ? 'drive' : 'walk'} mode`}
-              >
-                <Ionicons
-                  name={travelMode === 'walk' ? 'walk' : 'car'}
-                  size={14}
-                  color={travelMode === 'walk' ? THEME.pop : THEME.textSubtle}
-                />
-              </TouchableOpacity>
-              {favorites.length > 0 && (
-                <TouchableOpacity
-                  onPress={() => setShowFavorites(true)}
-                  style={styles.footerActionBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={`View ${favorites.length} favorites`}
-                >
-                  <Ionicons name="heart" size={14} color={THEME.accent} />
-                  <Text style={styles.footerActionText}>{favorites.length}</Text>
-                </TouchableOpacity>
-              )}
-              {blockedIds.length > 0 && (
-                <TouchableOpacity
-                  onPress={() => setShowBlocked(true)}
-                  style={styles.footerActionBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={`View ${blockedIds.length} blocked restaurants`}
-                >
-                  <Ionicons name="ban" size={14} color={THEME.muted} />
-                  <Text style={styles.footerActionText}>{blockedIds.length}</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                onPress={() => setShowCustomPlaces(true)}
-                style={styles.footerActionBtn}
-                accessibilityRole="button"
-                accessibilityLabel="Manage your spots"
-              >
-                <Ionicons name="add-circle" size={14} color={THEME.pop} />
-                <Text style={styles.footerActionText}>Spots</Text>
-              </TouchableOpacity>
-            </View>
+            <FeaturePills
+              travelMode={travelMode}
+              onToggleTravel={() => {
+                const next = travelMode === 'drive' ? 'walk' : 'drive';
+                setTravelMode(next);
+                AsyncStorage.setItem(STORAGE_KEYS.TRAVEL_MODE, next).catch(() => {});
+                if (next === 'walk' && radiusMiles > WALK_RADIUS_MAX)
+                  setRadiusMiles(WALK_RADIUS_DEFAULT);
+                if (next === 'drive' && radiusMiles < DRIVE_RADIUS_MIN)
+                  setRadiusMiles(DRIVE_RADIUS_DEFAULT);
+              }}
+              forkMode={forkMode}
+              onToggleFork={() => setForkMode((m) => (m === 'solo' ? 'group' : 'solo'))}
+              favorites={favorites}
+              blockedIds={blockedIds}
+              onShowFavorites={() => setShowFavorites(true)}
+              onShowBlocked={() => setShowBlocked(true)}
+              onShowCustomPlaces={() => setShowCustomPlaces(true)}
+            />
           </View>
 
           {/* Result - Moved to top */}
@@ -1982,10 +3404,9 @@ export default function App() {
                     Coming Soon
                   </Text>
                   <Text style={styles.infoText}>
-                    {'\u2022'} Restricted eater mode - dietary filters for allergies, preferences,
-                    and restrictions{'\n'}
-                    {'\u2022'} Copycat recipe optimization - better recipe matches for your picked
-                    spot{'\n'}
+                    {'\u2022'} Picky Eater Mode - dietary filters for allergies, preferences, and
+                    restrictions{'\n'}
+                    {'\u2022'} History & Stats - your ForkIt! journal with a map of picks{'\n'}
                     {'\u2022'} More to come - we're just getting started
                   </Text>
 
@@ -2024,6 +3445,16 @@ export default function App() {
                   </View>
 
                   <Text
+                    style={styles.privacyLink}
+                    onPress={() =>
+                      Linking.openURL('https://cherrelletucker.github.io/forkit/privacy.html')
+                    }
+                    accessibilityRole="link"
+                  >
+                    Privacy Policy
+                  </Text>
+
+                  <Text
                     style={styles.versionText}
                     onPress={() => {
                       easterEggTaps.current += 1;
@@ -2035,7 +3466,7 @@ export default function App() {
                     }}
                     suppressHighlighting
                   >
-                    v1.0.0
+                    v1.1.0
                   </Text>
                 </ScrollView>
                 {infoScrollVisible && (
@@ -2052,6 +3483,35 @@ export default function App() {
             </View>
           </View>
         </Modal>
+
+        {/* Fork Around Modal */}
+        <GroupForkModal
+          visible={showGroupModal}
+          onClose={closeGroupModal}
+          groupStep={groupStep}
+          groupCode={groupCode}
+          groupName={groupName}
+          setGroupName={setGroupName}
+          groupJoinCode={groupJoinCode}
+          setGroupJoinCode={setGroupJoinCode}
+          groupLocationName={groupLocationName}
+          setGroupLocationName={setGroupLocationName}
+          groupHostName={groupHostName}
+          groupHostRadius={groupHostRadius}
+          savedLocations={savedLocations}
+          saveLocation={saveLocation}
+          deleteSavedLocation={deleteSavedLocation}
+          groupParticipants={groupParticipants}
+          groupResult={groupResult}
+          groupLoading={groupLoading}
+          groupError={groupError}
+          groupFiltersSubmitted={groupFiltersSubmitted}
+          groupCreate={groupCreate}
+          groupJoin={groupJoin}
+          groupSubmitFilters={groupSubmitFilters}
+          groupTriggerPick={groupTriggerPick}
+          groupLeave={groupLeave}
+        />
 
         {/* Support Modal */}
         <Modal
@@ -2692,6 +4152,15 @@ const styles = StyleSheet.create({
     lineHeight: scale(TITLE_LINE_HEIGHT),
   },
   titleIt: { color: THEME.pop },
+  subtitle: {
+    color: THEME.textHint,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 2.5,
+    textAlign: 'center',
+    marginTop: 2,
+  },
 
   toastWrap: {
     position: 'absolute',
@@ -3152,6 +4621,14 @@ const styles = StyleSheet.create({
   },
   infoSupportHeading: { color: THEME.cream, marginTop: 0 },
   infoSupportBtnWrap: { borderWidth: 1, marginTop: 10 },
+  privacyLink: {
+    color: THEME.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+    textDecorationLine: 'underline',
+  },
   versionText: { color: THEME.textHint, fontSize: 11, textAlign: 'center', marginTop: 16 },
   supportHeadingCenter: { marginTop: 0, textAlign: 'center' },
   supportSubCenter: { marginBottom: 18, textAlign: 'center' },
@@ -3193,4 +4670,226 @@ const styles = StyleSheet.create({
   modalContentHeight: { maxHeight: SCREEN_HEIGHT * MODAL_CONTENT_RATIO },
   modalListHeight: { maxHeight: SCREEN_HEIGHT * MODAL_LIST_RATIO },
   modalSpotsHeight: { maxHeight: SCREEN_HEIGHT * MODAL_SPOTS_RATIO },
+
+  // Fork Around styles
+  usageHint: {
+    color: THEME.textDim,
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  usageHintAccent: {
+    color: THEME.accent,
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  groupInput: {
+    backgroundColor: THEME.cardInner,
+    color: THEME.textBright,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: THEME.divider,
+    textAlign: 'center',
+  },
+  groupDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  groupDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: THEME.divider,
+  },
+  groupDividerText: {
+    color: THEME.textHint,
+    fontSize: 12,
+    marginHorizontal: 12,
+  },
+  groupCodeDisplay: {
+    color: THEME.accent,
+    fontSize: 48,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: 8,
+    marginVertical: 10,
+  },
+  groupParticipantList: {
+    marginVertical: 12,
+  },
+  groupParticipantRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.divider,
+  },
+  groupParticipantName: {
+    color: THEME.textBright,
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  groupParticipantStatus: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  groupReadyText: {
+    color: THEME.pop,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginVertical: 8,
+  },
+  groupReadyHint: {
+    color: THEME.textDim,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  groupError: {
+    color: THEME.accent,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  groupHintText: {
+    color: THEME.textHint,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  groupLocationContext: {
+    color: THEME.pop,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 8,
+  },
+  groupLocSuggestions: {
+    backgroundColor: THEME.surfaceDropdown,
+    borderRadius: 8,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  groupLocSuggestionRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.borderSubtle,
+  },
+  groupLocSuggestionText: {
+    color: THEME.textSecondary,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  groupLocConfirmed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    paddingHorizontal: 4,
+  },
+  groupLocConfirmedText: {
+    color: THEME.pop,
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  groupSaveSpotBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 4,
+  },
+  groupSaveSpotText: {
+    color: THEME.pop,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  groupLeaveBtn: {
+    marginTop: 12,
+    alignSelf: 'center',
+  },
+  groupLeaveText: {
+    color: THEME.textHint,
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
+  groupResultName: {
+    color: THEME.cream,
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginVertical: 8,
+  },
+  groupResultDetail: {
+    color: THEME.textSubtle,
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  groupPickBtn: {
+    backgroundColor: THEME.accent,
+    marginTop: 8,
+  },
+  groupDirectionsBtn: {
+    backgroundColor: THEME.pop,
+    marginTop: 16,
+  },
+  groupFiltersWrap: {
+    marginVertical: 8,
+  },
+  groupFilterLabel: {
+    color: THEME.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  groupPillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 4,
+  },
+  groupPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: THEME.borderSubtle,
+    backgroundColor: THEME.surfaceLight,
+  },
+  groupPillActive: {
+    backgroundColor: THEME.pop,
+    borderColor: THEME.pop,
+  },
+  groupPillText: {
+    color: THEME.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  groupPillTextActive: {
+    color: THEME.white,
+  },
+  groupScrollView: {
+    maxHeight: SCREEN_HEIGHT * MODAL_CONTENT_RATIO,
+  },
+  marginTop16: { marginTop: 16 },
 });

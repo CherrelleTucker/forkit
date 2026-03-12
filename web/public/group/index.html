@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fork Around - ForkIt!</title>
+  <meta name="description" content="Join a Fork Around session to pick a restaurant together with friends. No app needed." />
+  <meta property="og:title" content="Fork Around - ForkIt!" />
+  <meta property="og:description" content="Join a Fork Around session to pick a restaurant together with friends." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://forkit-web.vercel.app/group" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Fork Around - ForkIt!" />
+  <meta name="twitter:description" content="Join a Fork Around session to pick a restaurant together with friends." />
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --accent: #FB923C;
+      --accent-light: #FDBA74;
+      --accent-dark: #EA580C;
+      --pop: #2DD4BF;
+      --cream: #FEF3E2;
+      --muted: #A1A1AA;
+      --error: #FF5E5B;
+      --bg-start: #0D0D0D;
+      --bg-mid: #1A1410;
+      --bg-end: #0D0D0D;
+      --text-primary: rgba(255,255,255,0.92);
+      --text-secondary: rgba(255,255,255,0.75);
+      --text-muted: rgba(255,255,255,0.55);
+      --text-hint: rgba(255,255,255,0.35);
+      --border-light: rgba(255,255,255,0.18);
+      --border-subtle: rgba(255,255,255,0.12);
+      --border-dim: rgba(255,255,255,0.08);
+      --surface-light: rgba(255,255,255,0.06);
+      --surface-hover: rgba(255,255,255,0.08);
+      --surface-input: rgba(0,0,0,0.20);
+      --accent-bg: rgba(251,146,60,0.15);
+      --accent-border: rgba(251,146,60,0.3);
+      --pop-bg: rgba(45,212,191,0.06);
+      --pop-border: rgba(45,212,191,0.25);
+    }
+
+    body {
+      font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-mid) 50%, var(--bg-end) 100%);
+      min-height: 100vh;
+      color: var(--text-primary);
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      overflow-y: auto;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 420px;
+      min-height: 100vh;
+      padding: 24px 20px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Header */
+    .brand {
+      text-align: center;
+      margin-bottom: 8px;
+      animation: fadeInDown 0.6s ease-out;
+    }
+    .brand-logo { font-size: 48px; margin-bottom: 4px; }
+    .brand-name {
+      font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+    .brand-sub {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--pop);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    /* Cards */
+    .card {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 24px 20px;
+      margin-bottom: 16px;
+      animation: fadeInUp 0.5s ease-out;
+    }
+    .card-glow {
+      border-color: var(--accent-border);
+      box-shadow: 0 0 30px rgba(251,146,60,0.08), inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+    .card-pop {
+      border-color: var(--pop-border);
+      box-shadow: 0 0 30px rgba(45,212,191,0.08), inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+
+    /* Section headings */
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 12px;
+    }
+
+    /* Inputs */
+    .input-field {
+      width: 100%;
+      background: var(--surface-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .input-field::placeholder { color: var(--text-hint); }
+    .input-field:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(251,146,60,0.15);
+    }
+
+    /* Pill selectors */
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .pill {
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid var(--border-light);
+      background: var(--surface-light);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .pill:hover { background: var(--surface-hover); }
+    .pill.active {
+      background: var(--accent-bg);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Primary button */
+    .btn-primary {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+      color: #fff;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.2s;
+      box-shadow: 0 4px 15px rgba(251,146,60,0.3);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(251,146,60,0.4); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* Secondary button */
+    .btn-secondary {
+      width: 100%;
+      padding: 14px;
+      border: 1px solid var(--border-light);
+      border-radius: 14px;
+      background: var(--surface-light);
+      color: var(--text-secondary);
+      font-family: 'Montserrat', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn-secondary:hover { background: var(--surface-hover); }
+
+    /* Directions button */
+    .btn-directions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--pop) 0%, #14B8A6 100%);
+      color: #0D0D0D;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 15px rgba(45,212,191,0.3);
+    }
+    .btn-directions:hover { transform: translateY(-1px); }
+
+    /* View states */
+    .view { display: none; width: 100%; flex-direction: column; align-items: center; }
+    .view.active { display: flex; }
+
+    /* Waiting state */
+    .participants-list { list-style: none; padding: 0; width: 100%; }
+    .participant {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border-dim);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+    .participant:last-child { border-bottom: none; }
+    .participant-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--pop);
+      flex-shrink: 0;
+    }
+    .participant-filters {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-left: auto;
+    }
+
+    /* Spinner */
+    .spinner-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 24px 0;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border-subtle);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    .spinner-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    /* Result */
+    .result-name {
+      font-size: 24px;
+      font-weight: 800;
+      text-align: center;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .result-meta {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .result-rating { color: var(--accent); font-weight: 700; }
+    .result-address {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    .result-actions { display: flex; justify-content: center; }
+
+    /* Error */
+    .error-icon { font-size: 48px; margin-bottom: 12px; text-align: center; }
+    .error-message {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-align: center;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+
+    /* Session code entry */
+    .code-entry {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+    }
+    .code-entry .input-field { flex: 1; text-transform: uppercase; letter-spacing: 8px; font-weight: 800; text-align: center; font-size: 28px; padding: 18px 16px; }
+    .code-entry .btn-go {
+      padding: 18px 20px;
+      border: none;
+      border-radius: 12px;
+      background: var(--accent);
+      color: #fff;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* Download CTA */
+    .download-cta {
+      text-align: center;
+      padding: 20px 16px;
+      margin-top: 12px;
+      background: linear-gradient(135deg, rgba(251,146,60,0.08) 0%, rgba(45,212,191,0.06) 100%);
+      border: 1px solid var(--accent-border);
+      border-radius: 14px;
+    }
+    .download-cta .cta-headline {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+    .download-cta .cta-body {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+    .download-cta .cta-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--pop);
+      background: var(--pop-bg);
+      border: 1px solid var(--pop-border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      margin-bottom: 12px;
+    }
+    .download-cta .cta-links {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .download-cta .cta-links a {
+      font-size: 13px;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 700;
+      padding: 10px 20px;
+      border: 1px solid var(--accent-border);
+      border-radius: 10px;
+      background: var(--accent-bg);
+      transition: background 0.2s;
+    }
+    .download-cta .cta-links a:hover {
+      background: rgba(251,146,60,0.25);
+    }
+
+    /* Animations */
+    @keyframes fadeInDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    @keyframes celebrateIn {
+      0% { opacity: 0; transform: scale(0.8); }
+      50% { transform: scale(1.03); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    .celebrate { animation: celebrateIn 0.6s ease-out; }
+
+    /* Responsive */
+    @media (min-width: 480px) {
+      .app { padding: 40px 24px 60px; }
+      .card { padding: 28px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<main class="app">
+  <!-- Header (always visible) -->
+  <header class="brand">
+    <h1 class="brand-name">Fork Around</h1>
+    <div class="brand-sub">Find out.</div>
+  </header>
+
+  <!-- VIEW: No session code — enter one -->
+  <div id="view-code" class="view">
+    <div class="card card-glow">
+      <div class="section-label">Session Code</div>
+      <p style="font-size:14px; color:var(--text-muted); margin-bottom:16px; line-height:1.5;">
+        Enter the 4-character code from your host to join a Fork Around session.
+      </p>
+      <div class="code-entry">
+        <input id="code-input" class="input-field" type="text" maxlength="4" placeholder="XXXX" autocomplete="off" />
+        <button class="btn-go" onclick="goToSession()">Join</button>
+      </div>
+      <div id="code-error" role="alert" style="color:var(--error); font-size:13px; font-weight:600; margin-top:10px; display:none;"></div>
+    </div>
+  </div>
+
+  <!-- VIEW: Join form — enter name + filters -->
+  <div id="view-join" class="view">
+    <div id="location-context" class="card card-pop" style="display:none;">
+      <div style="text-align:center; font-size:14px; font-weight:600; color:var(--pop); line-height:1.6;">
+        <span id="ctx-host-name"></span> is inviting you to eat<span id="ctx-location"></span><span id="ctx-radius"></span>!
+      </div>
+    </div>
+
+    <div class="card card-glow">
+      <div class="section-label">Your Name</div>
+      <input id="name-input" class="input-field" type="text" placeholder="What should we call you?" maxlength="20" autocomplete="off" />
+    </div>
+
+    <div class="card" style="animation-delay:0.05s;">
+      <div class="section-label">Distance</div>
+      <div class="pill-row" id="radius-pills"></div>
+
+      <div class="section-label">Max Price</div>
+      <div class="pill-row" id="price-pills"></div>
+
+      <div class="section-label">Min Rating</div>
+      <div class="pill-row" id="rating-pills"></div>
+
+      <div class="section-label" style="margin-top:4px;">Cuisine / Keyword</div>
+      <input id="keyword-input" class="input-field" type="text" placeholder="e.g. sushi, tacos, brunch..." maxlength="40" autocomplete="off" />
+
+      <div class="section-label" style="margin-top:12px;">Not in the Mood For</div>
+      <input id="exclude-input" class="input-field" type="text" placeholder="e.g. pizza, indian..." maxlength="100" autocomplete="off" />
+    </div>
+
+    <button id="join-btn" class="btn-primary" onclick="joinSession()">
+      Join &amp; Lock In Filters
+    </button>
+    <div id="join-error" role="alert" style="color:var(--error); font-size:13px; font-weight:600; margin-top:10px; text-align:center; display:none;"></div>
+  </div>
+
+  <!-- VIEW: Waiting for host -->
+  <div id="view-waiting" class="view">
+    <div class="card card-pop">
+      <div class="section-label">You're In<span id="waiting-name"></span>!</div>
+      <p style="font-size:14px; color:var(--text-secondary); margin-bottom:20px; line-height:1.5;">
+        Your filters are locked in. Waiting for the host to pick a restaurant...
+      </p>
+      <div class="spinner-container" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="spinner-text">Waiting for host...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-label">Participants</div>
+      <ul id="participants-list" class="participants-list"></ul>
+    </div>
+  </div>
+
+  <!-- VIEW: Result -->
+  <div id="view-result" class="view">
+    <div class="card card-glow celebrate">
+      <div style="text-align:center; font-size:48px; margin-bottom:12px;">🎉</div>
+      <div class="section-label" style="text-align:center;">The Fork Has Decided</div>
+      <div id="result-name" class="result-name"></div>
+      <div id="result-meta" class="result-meta"></div>
+      <div id="result-address" class="result-address"></div>
+      <div class="result-actions">
+        <a id="result-directions" class="btn-directions" href="#" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+          Get Directions
+        </a>
+      </div>
+      <div class="download-cta">
+        <div class="cta-headline">Did this make lunch easy?</div>
+        <div class="cta-body">Get the app to host your own sessions, discover restaurants solo, and save your favorite spots.</div>
+        <div class="cta-badge">Download free on iOS &amp; Android</div>
+        <div class="cta-links">
+          <a href="https://play.google.com/store/apps/details?id=com.ctuckersolutions.forkit" target="_blank" rel="noopener">Google Play</a>
+          <a href="https://apps.apple.com/app/forkit-restaurant-picker/id6759990349" target="_blank" rel="noopener">App Store</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW: Error -->
+  <div id="view-error" class="view">
+    <div class="card">
+      <div class="error-icon">😕</div>
+      <div id="error-message" class="error-message"></div>
+      <button class="btn-secondary" onclick="retryOrReset()">Try Again</button>
+    </div>
+  </div>
+
+  <footer style="margin-top:32px; text-align:center; font-size:12px;">
+    <a href="https://cherrelletucker.github.io/forkit/privacy.html" style="color:var(--text-hint); text-decoration:none;">Privacy Policy</a>
+    <span style="color:var(--text-hint); margin:0 6px;">&middot;</span>
+    <a href="/" style="color:var(--text-hint); text-decoration:none;">ForkIt!</a>
+  </footer>
+</main>
+
+<script>
+(function() {
+  'use strict';
+
+  const API_BASE = 'https://forkit-backend.vercel.app';
+  const POLL_INTERVAL = 2000;
+
+  var STORAGE_KEY = 'forkit_group_session';
+
+  // State
+  let sessionCode = '';
+  let participantId = '';
+  let participantName = '';
+  let pollTimer = null;
+  let pollErrorCount = 0;
+  const MAX_POLL_ERRORS = 15;
+  let sessionContext = null;
+
+  // --- Session persistence ---
+  function saveSession(code, pid, name) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ code: code, pid: pid, name: name, ts: Date.now() }));
+    } catch (_e) { /* storage full or blocked */ }
+  }
+
+  function loadSession(code) {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      // Only restore if same session code and less than 1 hour old
+      if (data.code === code && (Date.now() - data.ts) < 3600000) return data;
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    } catch (_e) { return null; }
+  }
+
+  function clearSession() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (_e) { /* */ }
+  }
+
+  // Filter state
+  const filters = {
+    radius: 5,
+    maxPrice: 4,
+    minRating: 3.5,
+    groupSize: '2-4',
+    keyword: '',
+    excludeKeyword: ''
+  };
+
+  // Filter options
+  const RADIUS_OPTIONS = [
+    { label: '1 mi', value: 1 },
+    { label: '3 mi', value: 3 },
+    { label: '5 mi', value: 5 },
+    { label: '10 mi', value: 10 }
+  ];
+  const PRICE_OPTIONS = [
+    { label: '$', value: 1 },
+    { label: '$$', value: 2 },
+    { label: '$$$', value: 3 },
+    { label: '$$$$', value: 4 }
+  ];
+  const RATING_OPTIONS = [
+    { label: '3.5+', value: 3.5 },
+    { label: '4.0+', value: 4.0 },
+    { label: '4.3+', value: 4.3 },
+    { label: '4.5+', value: 4.5 }
+  ];
+  // --- Init ---
+  async function init() {
+    buildPills();
+    var params = new URLSearchParams(window.location.search);
+    var code = params.get('code');
+    if (code && code.trim()) {
+      sessionCode = code.trim().toUpperCase();
+
+      // Check if we already joined this session
+      var saved = loadSession(sessionCode);
+      if (saved) {
+        participantId = saved.pid;
+        participantName = saved.name;
+        // Check if session still exists
+        var ctx = await fetchSessionContext(sessionCode);
+        if (ctx) {
+          sessionContext = ctx;
+          showLocationContext(sessionContext);
+          // Check if already done
+          var statusRes = await apiFetch('/api/group/status?code=' + encodeURIComponent(sessionCode));
+          if (statusRes.ok) {
+            var statusData = await statusRes.json();
+            if (statusData.status === 'done' && statusData.result) {
+              showResult(statusData.result);
+              return;
+            }
+            renderParticipants(statusData.participants || []);
+            showView('waiting');
+            startPolling();
+            return;
+          }
+        }
+        // Session expired or gone — clear and show join form
+        clearSession();
+      }
+
+      sessionContext = sessionContext || await fetchSessionContext(sessionCode);
+      showLocationContext(sessionContext);
+      showView('join');
+    } else {
+      showView('code');
+    }
+  }
+
+  // --- Views ---
+  function showView(name) {
+    document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); });
+    var el = document.getElementById('view-' + name);
+    if (el) el.classList.add('active');
+    if (name === 'waiting') {
+      var nameEl = document.getElementById('waiting-name');
+      if (nameEl) nameEl.textContent = participantName ? ', ' + participantName : '';
+    }
+  }
+  window.showView = showView;
+
+  // --- Pills ---
+  function buildPills() {
+    buildPillGroup('radius-pills', RADIUS_OPTIONS, 'radius', filters.radius);
+    buildPillGroup('price-pills', PRICE_OPTIONS, 'maxPrice', filters.maxPrice);
+    buildPillGroup('rating-pills', RATING_OPTIONS, 'minRating', filters.minRating);
+    // group size is host-only, not shown to joiners
+  }
+
+  function buildPillGroup(containerId, options, filterKey, activeValue) {
+    var container = document.getElementById(containerId);
+    container.innerHTML = '';
+    options.forEach(function(opt) {
+      var pill = document.createElement('button');
+      var isActive = opt.value === activeValue;
+      pill.className = 'pill' + (isActive ? ' active' : '');
+      pill.textContent = opt.label;
+      pill.setAttribute('type', 'button');
+      pill.setAttribute('aria-pressed', String(isActive));
+      pill.addEventListener('click', function() {
+        filters[filterKey] = opt.value;
+        container.querySelectorAll('.pill').forEach(function(p) {
+          p.classList.remove('active');
+          p.setAttribute('aria-pressed', 'false');
+        });
+        pill.classList.add('active');
+        pill.setAttribute('aria-pressed', 'true');
+      });
+      container.appendChild(pill);
+    });
+  }
+
+  // --- Fetch session context (location info) before showing join form ---
+  async function fetchSessionContext(code) {
+    try {
+      var res = await apiFetch('/api/group/status?code=' + encodeURIComponent(code));
+      if (!res.ok) return null;
+      var data = await res.json();
+      return {
+        hostName: data.hostName || '',
+        locationName: data.locationName || '',
+        hostRadius: data.hostRadius || null
+      };
+    } catch (_err) {
+      return null;
+    }
+  }
+
+  function showLocationContext(ctx) {
+    var el = document.getElementById('location-context');
+    if (!ctx || (!ctx.hostName && !ctx.locationName)) {
+      el.style.display = 'none';
+      return;
+    }
+    var nameEl = document.getElementById('ctx-host-name');
+    var locEl = document.getElementById('ctx-location');
+    var radEl = document.getElementById('ctx-radius');
+    nameEl.textContent = ctx.hostName || 'The host';
+    locEl.textContent = ctx.locationName ? ' near ' + ctx.locationName : '';
+    radEl.textContent = ctx.hostRadius ? ' (within ' + ctx.hostRadius + ' mi)' : '';
+    el.style.display = 'block';
+  }
+
+  // --- Session code entry ---
+  window.goToSession = async function() {
+    var input = document.getElementById('code-input');
+    var code = input.value.trim().toUpperCase();
+    var errEl = document.getElementById('code-error');
+    if (!code) {
+      errEl.textContent = 'Please enter a session code.';
+      errEl.style.display = 'block';
+      return;
+    }
+    errEl.style.display = 'none';
+    sessionCode = code;
+    // Update URL without reload
+    var url = new URL(window.location);
+    url.searchParams.set('code', code);
+    window.history.replaceState({}, '', url);
+
+    // Check if we already joined this session
+    var saved = loadSession(code);
+    if (saved) {
+      participantId = saved.pid;
+      participantName = saved.name;
+      sessionContext = await fetchSessionContext(code);
+      if (sessionContext) {
+        showLocationContext(sessionContext);
+        var statusRes = await apiFetch('/api/group/status?code=' + encodeURIComponent(code));
+        if (statusRes.ok) {
+          var statusData = await statusRes.json();
+          if (statusData.status === 'done' && statusData.result) {
+            showResult(statusData.result);
+            return;
+          }
+          renderParticipants(statusData.participants || []);
+          showView('waiting');
+          startPolling();
+          return;
+        }
+      }
+      clearSession();
+    }
+
+    sessionContext = await fetchSessionContext(code);
+    if (!sessionContext) {
+      errEl.textContent = 'Session not found. Check the code and try again.';
+      errEl.style.display = 'block';
+      sessionCode = null;
+      return;
+    }
+    showLocationContext(sessionContext);
+    showView('join');
+  };
+
+  // --- Join session ---
+  window.joinSession = async function() {
+    var nameInput = document.getElementById('name-input');
+    var joinBtn = document.getElementById('join-btn');
+    var errEl = document.getElementById('join-error');
+
+    participantName = nameInput.value.trim();
+    if (!participantName) {
+      errEl.textContent = 'Please enter your name.';
+      errEl.style.display = 'block';
+      nameInput.focus();
+      return;
+    }
+
+    errEl.style.display = 'none';
+    joinBtn.disabled = true;
+    joinBtn.textContent = 'Joining...';
+
+    filters.keyword = document.getElementById('keyword-input').value.trim();
+    filters.excludeKeyword = document.getElementById('exclude-input').value.trim();
+
+    try {
+      // Step 1: Join the session
+      var joinRes = await apiFetch('/api/group/join', {
+        method: 'POST',
+        body: JSON.stringify({
+          code: sessionCode,
+          name: participantName
+        })
+      });
+
+      if (!joinRes.ok) {
+        var joinErr = await joinRes.json().catch(function() { return {}; });
+        throw new Error(joinErr.error || httpError(joinRes.status));
+      }
+      var joinData = await joinRes.json();
+
+      // Step 2: Submit filters
+      var filterRes = await apiFetch('/api/group/filters', {
+        method: 'POST',
+        body: JSON.stringify({
+          code: sessionCode,
+          participantId: joinData.participantId,
+          filters: {
+            radiusMiles: filters.radius,
+            maxPrice: filters.maxPrice,
+            minRating: filters.minRating,
+            openNow: true,
+            hiddenGems: false,
+            cuisineKeyword: filters.keyword || '',
+            excludeKeyword: filters.excludeKeyword || '',
+            groupSize: filters.groupSize
+          }
+        })
+      });
+
+      if (!filterRes.ok) {
+        var filterErr = await filterRes.json().catch(function() { return {}; });
+        throw new Error(filterErr.error || 'Failed to submit filters.');
+      }
+
+      // Success — save session and go to waiting view
+      participantId = joinData.participantId;
+      saveSession(sessionCode, participantId, participantName);
+      showView('waiting');
+      startPolling();
+
+    } catch (err) {
+      joinBtn.disabled = false;
+      joinBtn.textContent = 'Join & Lock In Filters';
+      if (err.message.toLowerCase().includes('full')) {
+        showError('This session is full. Ask the host to start a new one.');
+      } else if (err.message.toLowerCase().includes('expired') || err.message.toLowerCase().includes('not found')) {
+        showError('This session has expired or doesn\'t exist. Check the code and try again.');
+      } else {
+        errEl.textContent = err.message || 'Something went wrong. Please try again.';
+        errEl.style.display = 'block';
+      }
+    }
+  };
+
+  // --- Polling ---
+  function startPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollErrorCount = 0;
+    pollStatus();
+    pollTimer = setInterval(pollStatus, POLL_INTERVAL);
+  }
+
+  async function pollStatus() {
+    try {
+      var res = await apiFetch('/api/group/status?code=' + encodeURIComponent(sessionCode));
+      if (!res.ok) {
+        if (res.status === 404) {
+          stopPolling();
+          showError('This session has expired.');
+          return;
+        }
+        pollErrorCount++;
+        if (pollErrorCount >= MAX_POLL_ERRORS) {
+          stopPolling();
+          showError('Lost connection to the session. Please try again.');
+        }
+        return;
+      }
+      pollErrorCount = 0;
+      var data = await res.json();
+
+      // Update participant list
+      renderParticipants(data.participants || []);
+
+      // Check if done
+      if (data.status === 'done' && data.result) {
+        stopPolling();
+        showResult(data.result);
+      }
+    } catch (_err) {
+      pollErrorCount++;
+      if (pollErrorCount >= MAX_POLL_ERRORS) {
+        stopPolling();
+        showError('Lost connection to the session. Please try again.');
+      }
+    }
+  }
+
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function renderParticipants(participants) {
+    var list = document.getElementById('participants-list');
+    list.innerHTML = '';
+    participants.forEach(function(p) {
+      var li = document.createElement('li');
+      li.className = 'participant';
+
+      var dot = document.createElement('span');
+      dot.className = 'participant-dot';
+      if (p.ready) {
+        dot.style.background = 'var(--pop)';
+      } else {
+        dot.style.background = 'var(--muted)';
+      }
+      li.appendChild(dot);
+
+      var nameSpan = document.createElement('span');
+      nameSpan.textContent = p.name || 'Guest';
+      li.appendChild(nameSpan);
+
+      if (p.isHost) {
+        var hostBadge = document.createElement('span');
+        hostBadge.textContent = 'HOST';
+        hostBadge.style.cssText = 'font-size:10px; font-weight:700; color:var(--accent); background:var(--accent-bg); padding:2px 8px; border-radius:8px; margin-left:8px;';
+        li.appendChild(hostBadge);
+      }
+
+      var filterTag = document.createElement('span');
+      filterTag.className = 'participant-filters';
+      filterTag.textContent = p.ready ? 'Filters set' : 'Waiting...';
+      li.appendChild(filterTag);
+
+      list.appendChild(li);
+    });
+  }
+
+  // --- Result ---
+  function showResult(result) {
+    document.getElementById('result-name').textContent = result.name || 'A Mystery Spot';
+
+    var meta = document.getElementById('result-meta');
+    meta.innerHTML = '';
+    if (result.rating) {
+      var ratingSpan = document.createElement('span');
+      ratingSpan.className = 'result-rating';
+      ratingSpan.textContent = result.rating + '/5';
+      meta.appendChild(ratingSpan);
+    }
+    if (result.priceLevel) {
+      var priceSpan = document.createElement('span');
+      priceSpan.textContent = '$'.repeat(result.priceLevel);
+      meta.appendChild(priceSpan);
+    }
+
+    var addrEl = document.getElementById('result-address');
+    addrEl.textContent = result.address || '';
+
+    var dirLink = document.getElementById('result-directions');
+    var query = encodeURIComponent(result.name + ' ' + (result.address || ''));
+    dirLink.href = 'https://www.google.com/maps/search/?api=1&query=' + query;
+
+    showView('result');
+  }
+
+  // --- Error ---
+  function showError(message) {
+    clearSession();
+    document.getElementById('error-message').textContent = message;
+    showView('error');
+  }
+
+  window.retryOrReset = function() {
+    stopPolling();
+    clearSession();
+    if (sessionCode) {
+      showView('join');
+    } else {
+      showView('code');
+    }
+  };
+
+  // --- API helper ---
+  function apiFetch(path, opts) {
+    opts = opts || {};
+    var headers = opts.headers || {};
+    if (opts.method && opts.method !== 'GET') {
+      headers = Object.assign({ 'Content-Type': 'application/json' }, headers);
+    }
+    opts.headers = headers;
+    var controller = new AbortController();
+    var timeout = setTimeout(function() { controller.abort(); }, 15000);
+    opts.signal = controller.signal;
+    return fetch(API_BASE + path, opts).finally(function() { clearTimeout(timeout); });
+  }
+
+  function httpError(status) {
+    if (status === 404) return 'Session not found or expired.';
+    if (status === 409) return 'This session is full.';
+    if (status === 429) return 'Too many requests. Wait a moment and try again.';
+    return 'Something went wrong (HTTP ' + status + '). Please try again.';
+  }
+
+  // --- Code input: auto-uppercase + Enter key ---
+  document.addEventListener('DOMContentLoaded', function() {
+    var codeInput = document.getElementById('code-input');
+    codeInput.addEventListener('input', function() {
+      this.value = this.value.toUpperCase();
+    });
+    codeInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') window.goToSession();
+    });
+
+    var nameInput = document.getElementById('name-input');
+    nameInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') nameInput.blur();
+    });
+
+    init();
+  });
+
+})();
+</script>
+
+</body>
+</html>

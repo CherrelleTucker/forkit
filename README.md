@@ -1,272 +1,120 @@
-# 🍴 ForkIt
+# ForkIt!
 
-**Fork indecision. Fork regret. Fork it all.**
+**Can't decide where to eat? Let fate decide.**
 
-ForkIt is a random restaurant picker that removes decision fatigue. One tap, one choice, done. Plus copycat recipes if you'd rather cook at home.
+ForkIt! is a random restaurant picker that removes decision fatigue. One tap, one random restaurant near you, done.
 
----
-
-## 🎯 The Problem
-
-Google Maps already shows you restaurants, ratings, reviews, and filters. What it doesn't do well:
-
-**"Just tell me where to eat."**
-
-ForkIt solves decision paralysis by making the choice for you.
+[Google Play](https://play.google.com/store/apps/details?id=com.ctuckersolutions.forkit) | [App Store](https://apps.apple.com/app/forkit-restaurant-picker/id6759990349) | [Web](https://forkit-web.vercel.app)
 
 ---
 
-## ✨ Features
+## Features
 
-### 🎲 True Random Selection
-- One button: **"Fork It Now"**
-- No scrolling, no browsing, no analysis paralysis
-- App picks ONE restaurant from your filtered preferences
-- Re-roll if you really don't vibe with it
-
-### 🏡 Make at Home Fallback
-- Every pick includes the restaurant's **signature dish**
-- Links to **copycat recipes** (YouTube, Google, Allrecipes)
-- Don't want to go out? Recreate the experience at home
-
-### ✨ Hidden Gems Mode
-- Prioritizes local, non-chain restaurants
-- Discover your neighborhood instead of defaulting to chains
-- Toggle on/off as needed
-
-### 🎚️ Smart Filters (Not Browsing Tools)
-- **Distance:** 1-15 miles radius
-- **Price:** $-$$$$
-- **Rating:** Minimum 3.5-4.5 stars
-- **Cuisine:** Optional keyword search
-- **Open Now:** Toggle to filter closed restaurants
-- **Hidden Gems:** Exclude chains, prioritize local
-
-### 🗺️ Integrations
-- **Google Maps:** One-tap navigation
-- **Phone Calls:** Call restaurant directly
-- **Recipe Links:** YouTube, Google Search, Allrecipes
+- **Random picks** — One button, one restaurant. No scrolling, no analysis paralysis
+- **Walk or drive** — Travel mode filter with smart walk-mode suggestions in dense areas
+- **Skip the chains** — Hidden Gems mode filters out chain restaurants so you discover local spots
+- **Cuisine filters** — Distance, price, rating, keyword, open now
+- **Fork Around** — Group restaurant picking with friends. Host creates a session, shares a code or link, everyone sets filters, app picks from the overlap
+- **Save Mom's house to the rotation** — Add custom spots to the random pool
+- **Block the restaurant your ex works at** — Permanently exclude places you never want to see
+- **Closing soon warnings** — Skips places closing within 30 min, warns you about places closing within 60 min
+- **Search near a different location** — Enter an address instead of using GPS
+- **Favorites** — Save restaurants you love
 
 ---
 
-## 🚀 Technology
+## Platforms
 
-- **Framework:** React Native (Expo)
-- **Platform:** Android (live), iOS (configured, launching Q3-Q4 2026)
-- **Data:** Google Places API
-- **Build:** EAS Build
-- **Distribution:** Google Play Store, Apple App Store (coming soon)
-
----
-
-## 📱 Download
-
-### Android
-> Currently in internal beta testing on Google Play Store
-
-Want to be a beta tester? [Contact me](#contact) or check out [FACEBOOK_TESTER_POST.md](FACEBOOK_TESTER_POST.md) for more info.
-
-### iOS
-> Coming Q3-Q4 2026
-
-iOS app is configured and ready to build. See [IOS_QUICK_START.md](IOS_QUICK_START.md) for deployment timeline.
+| Platform | Status | Version |
+|----------|--------|---------|
+| Android  | Live on Google Play | v1.1.0 |
+| iOS      | Live on App Store | v1.1.0 |
+| Web      | Landing page + Fork Around joiner | — |
 
 ---
 
-## 🎨 Design Philosophy
-
-### Decision Removal > Information Discovery
-You don't need more restaurant options. You need someone to pick one for you.
-
-### Personality Matters
-- Playful loading phrases: *"Consulting the vibes…"*
-- Slot-machine animation for reveals
-- Haptic feedback
-- Fun, confident tone
-
-### Local-First
-Hidden Gems mode isn't a filter—it's the philosophy. Support local restaurants, not chains.
-
----
-
-## 🏗️ Project Structure
+## Architecture
 
 ```
-ForkIt/
-├── AppFiles/           # Expo React Native app
-│   ├── App.js         # Main app logic
-│   ├── app.json       # Expo configuration
-│   ├── eas.json       # Build configuration
-│   └── assets/        # Icons, images
-├── docs/              # GitHub Pages (Privacy Policy)
-├── DEPLOYMENT_README.md      # How to deploy to Play Store
-├── PRIVACY_POLICY.md         # Privacy policy
-└── prd.md                    # Product requirements
+forkit/
+├── AppFiles/              # React Native + Expo (SDK 54) mobile app
+│   ├── App.js             # Single-file app (all UI + logic)
+│   ├── app.json           # Expo config
+│   └── utils/             # Platform wrappers (location, haptics)
+├── forkit-backend/        # Vercel serverless functions (Node.js, ESM)
+│   ├── api/               # places-nearby, places-details, verify-integrity
+│   └── api/group/         # Fork Around endpoints (create, join, filters, status, pick, leave)
+├── web/public/            # Static web app (landing page + group joiner)
+│   ├── index.html         # Landing page with download CTAs
+│   └── group/index.html   # Fork Around web joiner
+├── docs/                  # GitHub Pages (privacy policy)
+├── CLAUDE.md              # Project guide for AI-assisted development
+├── CHANGELOG.md           # Version history
+└── PRIVACY_POLICY.md      # Privacy policy (markdown)
 ```
 
+### Backend
+- Vercel serverless functions proxying Google Places API (New)
+- API key stored server-side only
+- Play Integrity verification (Android)
+- Fork Around sessions: Vercel KV (Redis), 1-hour TTL, max 8 participants
+- Rate limiting (30 req/min per IP) and origin checking
+
+### Web
+The web app is a **landing page + group joiner only** — not the full app. This prevents free unlimited usage via browser. Web joiners can only submit filters; the host (in-app) triggers API calls.
+
 ---
 
-## 🔐 Privacy & Security
-
-- **Location:** Used only to find nearby restaurants (not stored)
-- **No Accounts:** No login, no personal data collection
-- **No Tracking:** No analytics, no behavior tracking
-- **Ephemeral:** Location data is temporary (not retained)
-
-[Read Full Privacy Policy](https://CherrelleTucker.github.io/forkit/privacy.html)
-
----
-
-## 🛠️ Development
+## Development
 
 ### Prerequisites
 - Node.js 18+
-- npm or yarn
 - Expo CLI
-- Android Studio (for Android development)
+- Android Studio / Xcode (for native development)
 
 ### Setup
-
 ```bash
-# Clone repository
-git clone https://github.com/CherrelleTucker/forkit.git
-cd forkit/AppFiles
-
-# Install dependencies
+cd AppFiles
 npm install
-
-# Set up environment variables
 cp .env.example .env
-# Add your Google Places API key to .env
-
-# Start development server
+# Add EXPO_PUBLIC_BACKEND_URL to .env
 npx expo start
 ```
 
-### Environment Variables
-
+### Deploy
 ```bash
-# .env file
-EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=your_google_places_api_key
+# Backend
+cd forkit-backend && npx vercel --prod --yes
+
+# Web (static — no build needed)
+cd web && npx vercel deploy --prod --scope ctuckers-projects-c72f1fff --yes
+
+# Mobile — EAS build + store upload
+cd AppFiles && eas build --platform android --profile production
 ```
 
-Get your API key from [Google Cloud Console](https://console.cloud.google.com/google/maps-apis/credentials).
+---
+
+## Privacy
+
+- Location used only to find nearby restaurants — not stored on servers
+- No accounts, no login, no personal data collection
+- No analytics or behavior tracking
+- Fork Around sessions auto-delete after 1 hour
+
+[Full Privacy Policy](https://CherrelleTucker.github.io/forkit/privacy.html)
 
 ---
 
-## 📦 Building
+## Links
 
-### Local Development
-```bash
-npx expo start
-# Scan QR code with Expo Go app
-```
-
-### Production Build
-```bash
-# Install EAS CLI
-npm install -g eas-cli
-
-# Login
-eas login
-
-# Build Android App Bundle
-eas build --platform android --profile production
-```
-
-See [DEPLOYMENT_README.md](DEPLOYMENT_README.md) for full deployment guide.
+- [Google Play](https://play.google.com/store/apps/details?id=com.ctuckersolutions.forkit)
+- [App Store](https://apps.apple.com/app/forkit-restaurant-picker/id6759990349)
+- [Web](https://forkit-web.vercel.app)
+- [Privacy Policy](https://CherrelleTucker.github.io/forkit/privacy.html)
+- [Changelog](CHANGELOG.md)
+- [Report an Issue](https://github.com/CherrelleTucker/forkit/issues)
 
 ---
 
-## 🗺️ Roadmap
-
-See [ROADMAP.md](ROADMAP.md) for the complete product roadmap.
-
-### v1.0 (Current - Android Beta)
-- [x] Random restaurant selection
-- [x] Google Places API integration
-- [x] Hidden Gems mode
-- [x] Make at home with recipe links
-- [x] Smart filters
-- [x] Google Maps integration
-- [x] Android app on Google Play Store (Internal Testing)
-
-### Phase 1: Post-Beta (Q1 2026)
-- [ ] Improve chain detection logic
-- [ ] "Avoid repeats" within session
-- [ ] Saved favorites
-- [ ] History view
-
-### Phase 2: Enhanced Features (Q1-Q2 2026)
-- [ ] **Picky eater exclusion mode** (never show specific cuisines/ingredients)
-- [ ] Recipe import with ingredient parsing
-- [ ] Shopping list generation
-- [ ] Pantry tracking
-
-### Phase 3: iOS Launch (Q3-Q4 2026)
-- [ ] **iOS App Store release**
-- [ ] TestFlight beta testing
-- [ ] iOS-specific UI polish
-- [ ] Meal planning
-- [ ] Budget-aware mode
-
----
-
-## 🤝 Contributing
-
-ForkIt is currently a solo project in early development. Contributions welcome once v1.0 is publicly released!
-
-**Ideas for contributions:**
-- Better chain detection heuristics
-- Expanded signature dish database
-- UI/UX improvements
-- Bug fixes
-- Documentation improvements
-
----
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
----
-
-## 🐛 Known Issues
-
-- Signature dish detection is heuristic (manual database for major chains)
-- Chain detection uses keyword matching (not perfect)
-- iOS version planned for Q3-Q4 2026 (see [ROADMAP.md](ROADMAP.md))
-
----
-
-## 📞 Contact
-
-- **GitHub Issues:** [Report bugs or request features](https://github.com/CherrelleTucker/forkit/issues)
-- **Email:** ctuckersolutions@gmail.com
-
----
-
-## 🙏 Acknowledgments
-
-- **Google Places API** for restaurant data
-- **Expo** for incredible React Native tooling
-- **React Native Community** for support and libraries
-
----
-
-## 📊 Stats
-
-![GitHub stars](https://img.shields.io/github/stars/CherrelleTucker/forkit?style=social)
-![GitHub forks](https://img.shields.io/github/forks/CherrelleTucker/forkit?style=social)
-![GitHub issues](https://img.shields.io/github/issues/CherrelleTucker/forkit)
-![License](https://img.shields.io/github/license/CherrelleTucker/forkit)
-
----
-
-## 🎉 One-Sentence Pitch
-
-**ForkIt removes food decision fatigue by choosing a restaurant for you — and if you don't go, it gives you the recipe to recreate the best thing there.**
-
----
-
-**Fork indecision. Fork it all. 🍴**
+**Fork indecision. Let fate decide.**

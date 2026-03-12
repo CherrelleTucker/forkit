@@ -21,7 +21,8 @@ export const showAlert = (title, message, buttons) => {
   if (Platform.OS === 'web') {
     if (buttons?.length) {
       const choice = window.confirm(message ? `${title}\n\n${message}` : title);
-      if (choice && buttons[0]?.onPress) buttons[0].onPress();
+      const btn = choice ? buttons[buttons.length - 1] : buttons[0];
+      if (btn?.onPress) btn.onPress();
     } else {
       window.alert(message ? `${title}\n\n${message}` : title);
     }
