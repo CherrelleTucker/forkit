@@ -28,7 +28,7 @@
 - **Interactive Tour**: 12-step spotlight walkthrough, auto-launches on first open, replayable from info modal
 - **Pro Subscription (IAP)**: RevenueCat-powered $1.99/month. 20 free searches + 1 Fork Around/month for free users
 - **Custom Spot Tags**: Tag saved spots with cuisine keywords for filtered matching alongside Google results
-- **Fork Around UX**: Host session persistence, push notifications, rejoin after restart, streamlined host name flow, guest close minimizes instead of leaving, scroll indicators
+- **Fork Around UX**: Host session persistence, rejoin after restart, streamlined host name flow, guest close minimizes instead of leaving, scroll indicators
 - **Pool caching**: First tap fetches full pool; re-rolls are free with zero API calls
 - **Font scaling accessibility**: maxFontSizeMultiplier 1.3 across all text
 - **Color theory branding**: Orange = problem/challenge, Teal = solution/answer
@@ -39,6 +39,7 @@
 ## Up Next
 
 ### v3 — Ideas
+- **Push Notifications for Fork Around**: Background notifications when participants join or submit filters (requires Firebase/FCM setup)
 - **Food Truck Mode**: Discover food trucks near you
 - **History & Stats**: "Your ForkIt! Journal" — map of picks, cuisine breakdown
 - **Picky Eater Mode**: Dietary preference filters (vegetarian, gluten-free, etc.)

@@ -1,9 +1,7 @@
 // useGroupSession — Fork Around (group fork) state and logic.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
 import { useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
 
 import {
   BACKEND_URL,
@@ -14,7 +12,6 @@ import {
   GROUP_RESULT_EXPIRY_MS,
 } from '../constants/config';
 import { STORAGE_KEYS } from '../constants/storage';
-import { getExpoPushToken } from '../utils/api';
 import { safeStore } from '../utils/helpers';
 
 /**
@@ -54,12 +51,6 @@ export default function useGroupSession({
   const [groupResultTime, setGroupResultTime] = useState(null);
   const prevReadyCountRef = useRef(0);
   const isHostRef = useRef(false);
-
-  // Request notification permission early so the token is ready for Fork Around
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-    getExpoPushToken().catch(() => {});
-  }, []);
 
   // ──── Polling ────
 
@@ -102,24 +93,7 @@ export default function useGroupSession({
         setGroupPollStale(false);
         const data = await response.json();
         const participants = data.participants || [];
-        // Local notification when a new participant locks in filters
         const readyCount = participants.filter((p) => p.ready).length;
-        if (
-          readyCount > prevReadyCountRef.current &&
-          prevReadyCountRef.current > 0 &&
-          isHostRef.current &&
-          Platform.OS !== 'web'
-        ) {
-          const newReady = participants.filter((p) => p.ready).slice(-1)[0];
-          Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'Fork Around',
-              body: `${newReady?.name || 'Someone'} is ready! ${readyCount} ${readyCount === 1 ? 'person has' : 'people have'} responded.`,
-              data: { type: 'group_filters' },
-            },
-            trigger: null,
-          }).catch(() => {});
-        }
         prevReadyCountRef.current = readyCount;
         setGroupParticipants(participants);
         if (data.status === 'done' && data.result) {
@@ -132,17 +106,6 @@ export default function useGroupSession({
           resultExpiryRef.current = setTimeout(() => {
             resetGroupState();
           }, GROUP_RESULT_EXPIRY_MS);
-          // Local notification so users see the result even if the app is backgrounded
-          if (Platform.OS !== 'web') {
-            Notifications.scheduleNotificationAsync({
-              content: {
-                title: 'The Fork Has Spoken!',
-                body: data.result.name || 'Check the app for details',
-                data: { type: 'group_result' },
-              },
-              trigger: null, // immediate
-            }).catch(() => {});
-          }
         }
       } catch (_) {
         clearTimeout(pollTimer);
@@ -264,13 +227,11 @@ export default function useGroupSession({
       return;
     }
     try {
-      const pushToken = await getExpoPushToken().catch(() => null);
       const data = await groupFetch('create', {
         hostName: groupName.trim() || 'Host',
         latitude: sessionCoords.latitude,
         longitude: sessionCoords.longitude,
         locationName: groupLocationName.trim(),
-        pushToken,
       });
       setGroupCode(data.code);
       setGroupHostId(data.hostId);
@@ -397,11 +358,9 @@ export default function useGroupSession({
         const saved = JSON.parse(raw);
         if (!saved?.code || !saved?.hostId) return;
         // Verify session still exists on backend
-        const pushToken = await getExpoPushToken().catch(() => null);
         const res = await groupFetch('rejoin', {
           code: saved.code,
           hostId: saved.hostId,
-          pushToken,
         });
         // Session still alive — restore host state
         setGroupCode(res.code);
@@ -423,51 +382,6 @@ export default function useGroupSession({
     return () => stopGroupPolling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Reopen group modal when user taps a push notification
-  useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener(async (response) => {
-      const { data } = response.notification.request.content;
-      if (data?.type === 'group_join' || data?.type === 'group_filters') {
-        if (groupCode) {
-          // Session already in memory — just open the modal
-          setShowGroupModal(true);
-        } else {
-          // Session lost (app was killed) — try to restore from storage
-          try {
-            const raw = await AsyncStorage.getItem(STORAGE_KEYS.GROUP_SESSION);
-            if (raw) {
-              const saved = JSON.parse(raw);
-              if (saved?.code && saved?.hostId) {
-                const pushToken = await getExpoPushToken().catch(() => null);
-                const res = await groupFetch('rejoin', {
-                  code: saved.code,
-                  hostId: saved.hostId,
-                  pushToken,
-                });
-                setGroupCode(res.code);
-                setGroupHostId(saved.hostId);
-                isHostRef.current = true;
-                setGroupParticipantId(saved.hostId);
-                setGroupName(saved.hostName || '');
-                setGroupLocationName(res.locationName || '');
-                setGroupHostName(res.hostName || '');
-                if (res.participants) setGroupParticipants(res.participants);
-                setGroupStep(res.status === 'done' ? 'result' : 'hosting');
-                if (res.result) setGroupResult(res.result);
-                startGroupPolling(res.code);
-                setShowGroupModal(true);
-              }
-            }
-          } catch (_) {
-            AsyncStorage.removeItem(STORAGE_KEYS.GROUP_SESSION).catch(() => {});
-          }
-        }
-      }
-    });
-    return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupCode]);
 
   return {
     showGroupModal,

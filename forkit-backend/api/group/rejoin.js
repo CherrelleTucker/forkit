@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  const { code, hostId, pushToken } = req.body || {};
+  const { code, hostId } = req.body || {};
 
   if (!code || typeof code !== 'string' || code.trim().length !== 4) {
     return res.status(400).json({ error: 'A 4-character session code is required.' });
@@ -25,13 +25,6 @@ export default async function handler(req, res) {
     }
     if (session.hostId !== hostId) {
       return res.status(403).json({ error: 'Invalid host credentials.' });
-    }
-
-    // Update push token if provided (app may have a new token after restart)
-    if (pushToken && typeof pushToken === 'string') {
-      // We need to update the session in Redis with the new token
-      const { updateHostPushToken } = await import('../../lib/group.js');
-      await updateHostPushToken(code.trim(), pushToken).catch(() => {});
     }
 
     const host = Object.values(session.participants).find((p) => p.isHost);

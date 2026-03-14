@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  const { hostName, latitude, longitude, locationName, pushToken } = req.body || {};
+  const { hostName, latitude, longitude, locationName } = req.body || {};
 
   if (!hostName || typeof hostName !== 'string' || hostName.trim().length === 0) {
     return res.status(400).json({ error: 'hostName is required.' });
@@ -20,13 +20,10 @@ export default async function handler(req, res) {
 
   try {
     const safeName = typeof locationName === 'string' ? locationName.trim().slice(0, 60) : '';
-    const safeToken = typeof pushToken === 'string' ? pushToken.slice(0, 200) : null;
-    console.log('[group/create] pushToken received:', safeToken ? 'yes (' + safeToken.slice(0, 30) + '...)' : 'null');
     const { code, hostId, session } = await createSession(
       hostName.trim().slice(0, 20),
       { latitude, longitude },
       safeName,
-      safeToken,
     );
     return res.status(200).json({
       code,

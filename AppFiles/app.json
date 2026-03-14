@@ -8,7 +8,7 @@
     "userInterfaceStyle": "dark",
     "scheme": "forkit",
     "newArchEnabled": true,
-    "description": "Fork indecision. Random restaurant picker with copycat recipes. Just tap and we'll choose for you.",
+    "description": "Fork indecision. Random restaurant picker — just tap and we'll choose for you.",
     "privacy": "https://CherrelleTucker.github.io/forkit/privacy.html",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ctuckersolutions.forkit",
-      "buildNumber": "11",
+      "buildNumber": "17",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "ForkIt needs your location to find nearby restaurants and help you decide where to eat.",
         "CFBundleAllowMixedLocalizations": true,
@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "com.forkit.app",
-      "versionCode": 14,
+      "versionCode": 16,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B0B0F"
@@ -49,13 +49,6 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
-        }
-      ],
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#E8621C"
         }
       ]
     ],

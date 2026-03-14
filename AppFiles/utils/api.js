@@ -1,7 +1,4 @@
-// api.js — Backend API calls and push token registration
-
-import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+// api.js — Backend API calls
 
 import { BACKEND_URL, DETAILS_TIMEOUT, HTTP_TOO_MANY_REQUESTS } from '../constants/config';
 
@@ -63,30 +60,4 @@ export async function getPlaceDetails(placeId) {
     clearTimeout(timeoutId);
     return null;
   }
-}
-
-/**
- * Request notification permissions and get the Expo push token.
- * @returns {Promise<string|null>} Push token string or null if unavailable
- */
-export async function getExpoPushToken() {
-  if (Platform.OS === 'web') return null;
-  const { status: existing } = await Notifications.getPermissionsAsync();
-  let finalStatus = existing;
-  if (existing !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  if (finalStatus !== 'granted') return null;
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('group-session', {
-      name: 'Fork Around Sessions',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250], // eslint-disable-line no-magic-numbers -- notification vibration config
-    });
-  }
-  const tokenData = await Notifications.getExpoPushTokenAsync({
-    projectId: '0abe90d5-587c-4918-ad8b-7d472c687ace',
-  });
-  return tokenData.data;
 }

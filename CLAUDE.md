@@ -107,11 +107,11 @@ Standard Expo/EAS build process. Changes to `AppFiles/` code require a new build
 - **Pool caching**: First tap fetches full pool, subsequent taps pick locally (zero API calls). Cache invalidates on filter change or after 4 hours.
 - **Group Fork (Fork Around)**: 1 free session/month, unlimited with Pro ($1.99/month). Host creates session → shares 4-letter code or web link → friends join and set filters → merged filters (most restrictive) → random pick. Sessions auto-expire after 1 hour.
 - **Free tier**: 20 searches/month, 1 Fork Around session/month. A "search" = new API fetch (filter change or cache expiry). Re-rolls from cached pool are free and unlimited. Resets on the 1st. No countdown shown to users — soft Pro nudge after 10 searches, hard paywall at 20. Pro ($1.99/month) unlocks unlimited everything.
-- **IAP**: RevenueCat (`react-native-purchases`). Products: Apple `com.ctuckersolutions.forkit.pro.monthly`, Google `forkit_pro_monthly`. Google Play product is ACTIVE. Apple product created but needs price set in ASC. Early adopters get `pro` entitlement via RevenueCat promotional grants.
+- **IAP**: RevenueCat (`react-native-purchases`). Products: Apple `com.ctuckersolutions.forkit.pro.monthly`, Google `forkit_pro_monthly`. Both products ACTIVE. Apple subscription price set ($1.99, 175 regions). Offer codes prepped for beta testers (generate after approval). No push notifications in v2 (deferred to v3, needs Firebase/FCM setup).
 - **Web joiner**: `web/public/group/index.html` — standalone HTML/JS page for browser-based group joining (no app required)
 - **Interactive Tour**: 12-step spotlight overlay, auto-launches on first open or when `TOUR_VERSION` bumped. Back/Next navigation. Covers all features + free/Pro explainer. Replayable from info modal ("Take a Tour" button). Tour refs attached to key UI elements via `tourRefs` object.
 - **Custom Spot Tags**: Spots have a `tags` field (comma-separated string). During fork, spots are filtered by cuisine keyword (matched against tags + name) and exclude terms. No tags = spot only appears when no keyword is set.
-- **Fork Around Session Persistence**: Host session saved to AsyncStorage on create, restored on app restart + notification deep-link. Backend `rejoin.js` endpoint verifies code+hostId.
+- **Fork Around Session Persistence**: Host session saved to AsyncStorage on create, restored on app restart. Backend `rejoin.js` endpoint verifies code+hostId.
 - **Color theory**: Orange (`THEME.accent`) = problem/challenge/call-to-action. Teal (`THEME.pop`) = solution/answer/resolution. Applied to headings, buttons, and branding throughout.
 
 ## Future Ideas (Pinned)

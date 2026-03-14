@@ -62,10 +62,9 @@ async function setJSON(key, value) {
  * @param {string} hostName - display name for the host
  * @param {{latitude: number, longitude: number}} coords - host's location
  * @param {string} locationName - human-readable name for the host's location (e.g. "NSSTC")
- * @param {string|null} pushToken - Expo push token for host notifications
  * @returns {Promise<{code: string, hostId: string, session: object}>}
  */
-export async function createSession(hostName, coords, locationName, pushToken) {
+export async function createSession(hostName, coords, locationName) {
   // Try up to 5 times to find an unused code
   let code;
   for (let i = 0; i < 5; i++) {
@@ -92,7 +91,6 @@ export async function createSession(hostName, coords, locationName, pushToken) {
       },
     },
     result: null,
-    hostPushToken: pushToken || null,
   };
 
   await setJSON(sessionKey(code), session);
@@ -282,48 +280,3 @@ export async function leaveSession(code, participantId) {
   return session;
 }
 
-/**
- * Update the host's push token (e.g. after app restart).
- * @param {string} code - session code
- * @param {string} pushToken - new Expo push token
- * @returns {Promise<void>}
- */
-export async function updateHostPushToken(code, pushToken) {
-  const key = sessionKey(code.toUpperCase());
-  const session = await getJSON(key);
-  if (!session) return;
-  session.hostPushToken = pushToken;
-  await setJSON(key, session);
-}
-
-/**
- * Send a push notification to the session host via Expo Push API.
- * Fire-and-forget — never throws.
- * @param {string} token - Expo push token
- * @param {string} title - notification title
- * @param {string} body - notification body
- * @param {object} data - extra data payload
- */
-export async function sendPushToHost(token, title, body, data = {}) {
-  if (!token) return;
-  try {
-    await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        "Accept-Encoding": "gzip, deflate",
-      },
-      body: JSON.stringify({
-        to: token,
-        title,
-        body,
-        data,
-        sound: "default",
-        channelId: "group-session",
-      }),
-    });
-  } catch (_) {
-    // Non-critical — swallow
-  }
-}

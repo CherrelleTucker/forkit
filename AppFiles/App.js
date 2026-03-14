@@ -9,7 +9,6 @@ import {
 } from '@expo-google-fonts/montserrat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Notifications from 'expo-notifications';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -118,15 +117,6 @@ if (Text.defaultProps == null) Text.defaultProps = {};
 Text.defaultProps.maxFontSizeMultiplier = MAX_FONT_SCALE;
 if (TextInput.defaultProps == null) TextInput.defaultProps = {};
 TextInput.defaultProps.maxFontSizeMultiplier = MAX_FONT_SCALE;
-
-// Push notification foreground handler
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
 
 // ==============================
 // APP
@@ -704,7 +694,7 @@ export default function App() {
       }
 
       setPoolCount(results.length);
-      maybeNudgeWalkMode(results.length);
+      maybeNudgeWalkMode(raw.length);
 
       if (!results.length) {
         await haptics.notificationAsync(haptics.NotificationFeedbackType.Warning);

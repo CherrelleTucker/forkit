@@ -7,9 +7,8 @@
 - **Custom Spot Tags**: Tag your saved spots (e.g. "pasta, homecooking, spicy") so they filter alongside Google results by cuisine keyword and exclusions
 - **Pro Subscription (IAP)**: RevenueCat-powered $1.99/month via Apple and Google. 20 free searches + 1 Fork Around session/month for free users
 - **Fork Around Improvements**:
-  - Host session persists across app restarts and notification deep-links
+  - Host session persists across app restarts
   - Host name optional at session creation, entered on the hosting screen
-  - Push notifications when participants submit filters
   - Solo result card hidden during group sessions
   - Backend rejoin endpoint for session recovery
   - Guest close minimizes modal instead of leaving session

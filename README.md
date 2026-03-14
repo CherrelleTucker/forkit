@@ -14,7 +14,7 @@ ForkIt! is a random restaurant picker that removes decision fatigue. One tap, on
 - **Walk or drive** — Travel mode filter with smart walk-mode suggestions in dense areas
 - **Skip the chains** — Hidden Gems mode filters out chain restaurants so you discover local spots
 - **Cuisine filters** — Distance, price, rating, keyword, open now
-- **Fork Around** — Group restaurant picking with friends. Host creates a session, shares a code or link, everyone sets filters, app picks from the overlap. Sessions persist if the host closes the app, and push notifications alert when friends submit filters. 1 free session/month, unlimited with Pro
+- **Fork Around** — Group restaurant picking with friends. Host creates a session, shares a code or link, everyone sets filters, app picks from the overlap. Sessions persist if the host closes the app. 1 free session/month, unlimited with Pro
 - **Pool caching** — First tap fetches the full pool; re-rolls pick locally with zero API calls until filters change or the cache expires
 - **Save Mom's house to the rotation** — Add custom spots with tags (e.g. "pasta, homecooking") so they filter alongside Google results
 - **Block the restaurant your ex works at** — Permanently exclude places you never want to see

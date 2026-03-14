@@ -194,7 +194,6 @@ function InfoModal({ visible, onClose, isPro, showPaywall, showToast, startTour 
                 {'\u2022'} Tag your custom spots (pasta, homecooking, spicy) so they filter with
                 Google results{'\n'}
                 {'\u2022'} Fork Around sessions survive app restarts{'\n'}
-                {'\u2022'} Push notifications when friends submit filters{'\n'}
                 {'\u2022'} Smart pool caching — re-rolls are instant with zero API calls{'\n'}
                 {'\u2022'} Free tier: 20 searches + 1 Fork Around/month. Pro removes all limits
               </Text>
