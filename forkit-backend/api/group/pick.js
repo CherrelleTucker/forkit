@@ -91,10 +91,10 @@ export default async function handler(req, res) {
         }),
       );
 
-      const responses = await Promise.all(searches);
-      for (const response of responses) {
-        if (response.ok) {
-          const data = await response.json();
+      const settled = await Promise.allSettled(searches);
+      for (const result of settled) {
+        if (result.status === 'fulfilled' && result.value.ok) {
+          const data = await result.value.json();
           if (data.places?.length > 0) {
             const existingIds = new Set(allPlaces.map((p) => p.id));
             allPlaces = allPlaces.concat(data.places.filter((p) => !existingIds.has(p.id)));
@@ -127,7 +127,7 @@ export default async function handler(req, res) {
           }),
         });
 
-      const responses = await Promise.all([
+      const settled = await Promise.allSettled([
         makeRequest(['restaurant'], 'DISTANCE'),
         makeRequest(['restaurant'], 'POPULARITY'),
         makeRequest(['american_restaurant'], 'POPULARITY'),
@@ -136,9 +136,9 @@ export default async function handler(req, res) {
         makeRequest(['chinese_restaurant'], 'POPULARITY'),
       ]);
 
-      for (const response of responses) {
-        if (response.ok) {
-          const data = await response.json();
+      for (const result of settled) {
+        if (result.status === 'fulfilled' && result.value.ok) {
+          const data = await result.value.json();
           if (data.places?.length > 0) {
             const existingIds = new Set(allPlaces.map((p) => p.id));
             allPlaces = allPlaces.concat(data.places.filter((p) => !existingIds.has(p.id)));

@@ -187,7 +187,7 @@ export default async function handler(req, res) {
         });
 
       // Make parallel requests with different types and rankings for maximum variety
-      const responses = await Promise.all([
+      const settled = await Promise.allSettled([
         makeRequest(['restaurant'], 'DISTANCE'),
         makeRequest(['restaurant'], 'POPULARITY'),
         makeRequest(['american_restaurant'], 'POPULARITY'),
@@ -199,9 +199,14 @@ export default async function handler(req, res) {
       const labels = ['restaurant/distance', 'restaurant/popularity', 'american', 'mexican', 'italian', 'chinese'];
 
       // Process all responses and deduplicate
-      for (let i = 0; i < responses.length; i++) {
-        if (responses[i].ok) {
-          const data = await responses[i].json();
+      for (let i = 0; i < settled.length; i++) {
+        if (settled[i].status !== 'fulfilled') {
+          console.error(`${labels[i]} FAILED: ${settled[i].reason?.message || 'unknown'}`);
+          continue;
+        }
+        const response = settled[i].value;
+        if (response.ok) {
+          const data = await response.json();
           if (data.places?.length > 0) {
             const existingIds = new Set(allPlaces.map(p => p.id));
             const newPlaces = data.places.filter(p => !existingIds.has(p.id));
@@ -211,8 +216,8 @@ export default async function handler(req, res) {
             console.log(`${labels[i]}: 0 places returned`);
           }
         } else {
-          const errorText = await responses[i].text();
-          console.error(`${labels[i]} FAILED: ${responses[i].status} - ${errorText}`);
+          const errorText = await response.text();
+          console.error(`${labels[i]} FAILED: ${response.status} - ${errorText}`);
         }
       }
 
