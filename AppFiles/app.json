@@ -50,6 +50,13 @@
         {
           "locationWhenInUsePermission": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "ctuckersolutions",
+          "project": "react-native"
+        }
       ]
     ],
     "extra": {

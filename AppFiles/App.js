@@ -8,6 +8,7 @@ import {
   Montserrat_700Bold,
 } from '@expo-google-fonts/montserrat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Sentry from '@sentry/react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -109,6 +110,12 @@ import { getIntegrityToken, verifyIntegrityToken } from './utils/integrity';
 import { requestLocationPermission, getCurrentPosition } from './utils/location';
 import { haptics, showAlert } from './utils/platform';
 import { parseStoredState } from './utils/storageParser';
+
+// Sentry crash reporting — errors only, no user tracking
+Sentry.init({
+  dsn: 'https://853c52dcc5a798c84f39f8747097d3f7@o4511044289495040.ingest.us.sentry.io/4511044290805760',
+  enabled: !__DEV__,
+});
 
 // Cap font scaling so large-font accessibility settings don't break the layout.
 // Users still get ~30% larger text; anything beyond that clips fixed containers.
