@@ -1,6 +1,6 @@
 // ForkIt Backend - Group Fork: Join Session
 import { runSecurityChecks } from '../../lib/security.js';
-import { joinSession } from '../../lib/group.js';
+import { joinSession, sendPushToHost } from '../../lib/group.js';
 
 export default async function handler(req, res) {
   if (!runSecurityChecks(req, res)) return;
@@ -23,6 +23,15 @@ export default async function handler(req, res) {
       code.trim(),
       name.trim().slice(0, 20),
     );
+    // Notify host (fire-and-forget)
+    if (session.hostPushToken) {
+      sendPushToHost(
+        session.hostPushToken,
+        'Fork Around',
+        `${name.trim().slice(0, 20)} joined your session!`,
+        { type: 'group_join', code: session.code },
+      );
+    }
     const host = Object.values(session.participants).find((p) => p.isHost);
     return res.status(200).json({
       participantId,

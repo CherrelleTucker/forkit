@@ -1,7 +1,7 @@
 # ForkIt! Product Roadmap
 
 **Last Updated:** March 2026
-**Current Version:** 1.1.0 (Live on Google Play, App Store, and Web)
+**Current Version:** 2.0.0
 
 ---
 
@@ -24,37 +24,45 @@
 - Walk mode suggestion threshold tuning
 - Web landing page replacing full Expo web export
 
+### v2.0.0 — Tour, Pro, & Custom Spot Tags (March 2026)
+- **Interactive Tour**: 12-step spotlight walkthrough, auto-launches on first open, replayable from info modal
+- **Pro Subscription (IAP)**: RevenueCat-powered $1.99/month. 20 free searches + 1 Fork Around/month for free users
+- **Custom Spot Tags**: Tag saved spots with cuisine keywords for filtered matching alongside Google results
+- **Fork Around UX**: Host session persistence, push notifications, rejoin after restart, streamlined host name flow, guest close minimizes instead of leaving, scroll indicators
+- **Pool caching**: First tap fetches full pool; re-rolls are free with zero API calls
+- **Font scaling accessibility**: maxFontSizeMultiplier 1.3 across all text
+- **Color theory branding**: Orange = problem/challenge, Teal = solution/answer
+- **Multi-file architecture**: Components, utils, constants extracted from monolithic App.js
+
 ---
 
 ## Up Next
 
-### Picky Eater Mode
-- Dietary preference filters (vegetarian, gluten-free, etc.)
-- Cuisine/ingredient exclusion profiles
-- Keyword-based filtering via Places API
-
-### History & Stats
-- "Your ForkIt! Journal" — map of picks, cuisine breakdown
-- Export/share capability
-
-### Favorites Sync
-- Cross-device sync (requires lightweight backend + optional account)
+### v3 — Ideas
+- **Food Truck Mode**: Discover food trucks near you
+- **History & Stats**: "Your ForkIt! Journal" — map of picks, cuisine breakdown
+- **Picky Eater Mode**: Dietary preference filters (vegetarian, gluten-free, etc.)
+- **Fork Around Session History**: Review past group sessions and their picks
+- **Multi-Session Support**: Host one session while joining another simultaneously
+- **Solo Fork History**: Recent picks shown on main screen in the same card style
+- **Meet-Up Time**: Host sets a time to meet, shared with all guests in the result
+- **User Accounts**: Lightweight accounts for cross-device sync and historical session tracking
 
 ---
 
 ## Future Ideas
 
 - **Community Spotlight**: Highlight local businesses (women-owned, Black-owned, etc.) — needs external data source
+- **Favorites Sync**: Cross-device sync (requires lightweight backend + optional account)
 - **Budget-aware mode**: Weekly/monthly food budget tracking
 - **Weather-aware suggestions**: Indoor dining when it's raining
-- **Meal planning**: "Plan my week" mixing restaurants + home cooking
 
 ---
 
 ## Monetization
 
-- **Free tier**: 10 solo forks/month, 1 Fork Around session/month
-- **Pro** ($1.99/month): Unlimited everything (IAP stub in place, real purchase flow TBD)
+- **Free tier**: 20 searches/month, 1 Fork Around session/month. Re-rolls from cached pool are free and unlimited
+- **Pro** ($1.99/month): Unlimited everything
 - No ads — user experience over revenue
 
 ---

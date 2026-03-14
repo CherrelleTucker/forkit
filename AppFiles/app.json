@@ -2,7 +2,7 @@
   "expo": {
     "name": "ForkIt!",
     "slug": "forkit",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.ctuckersolutions.forkit",
-      "buildNumber": "8",
+      "buildNumber": "11",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "ForkIt needs your location to find nearby restaurants and help you decide where to eat.",
         "CFBundleAllowMixedLocalizations": true,
@@ -27,7 +27,7 @@
     },
     "android": {
       "package": "com.forkit.app",
-      "versionCode": 8,
+      "versionCode": 14,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0B0B0F"
@@ -51,7 +51,13 @@
           "locationWhenInUsePermission": "ForkIt needs your location to find nearby restaurants and help you decide where to eat."
         }
       ],
-      "react-native-purchases"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#E8621C"
+        }
+      ]
     ],
     "extra": {
       "eas": {

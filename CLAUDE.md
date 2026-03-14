@@ -7,8 +7,8 @@ Random restaurant picker app. Users tap "Fork It" to get a random nearby restaur
 
 ### Mobile App (`AppFiles/`)
 - **Framework**: React Native + Expo (SDK 54)
-- **Entry point**: `index.js` → `App.js` (single-file app, all UI + logic)
-- **Key dependencies**: expo-location, expo-haptics, expo-linear-gradient, react-native-svg, @expo-google-fonts/montserrat
+- **Entry point**: `index.js` → `App.js` (main orchestrator) → `components/`, `utils/`, `constants/`
+- **Key dependencies**: expo-location, expo-haptics, expo-linear-gradient, react-native-svg, @expo-google-fonts/montserrat, react-native-purchases (RevenueCat)
 - **Platform features**: Play Integrity (Android)
 - **Config**: `app.json`, `.env` (EXPO_PUBLIC_BACKEND_URL)
 
@@ -37,6 +37,7 @@ Random restaurant picker app. Users tap "Fork It" to get a random nearby restaur
   - `status.js` (GET) — Poll session status and participants
   - `pick.js` — Host triggers the pick (merges filters, searches, picks random)
   - `leave.js` — Leave/end session
+  - `rejoin.js` — Host reconnects to active session after app restart
 - **Session storage** (`lib/group.js`): Vercel KV (Redis), 1-hour TTL, max 8 participants
 - **Security** (`lib/security.js`):
   - Rate limiting: 30 req/min per IP
@@ -108,7 +109,9 @@ Standard Expo/EAS build process. Changes to `AppFiles/` code require a new build
 - **Free tier**: 20 searches/month, 1 Fork Around session/month. A "search" = new API fetch (filter change or cache expiry). Re-rolls from cached pool are free and unlimited. Resets on the 1st. No countdown shown to users — soft Pro nudge after 10 searches, hard paywall at 20. Pro ($1.99/month) unlocks unlimited everything.
 - **IAP**: RevenueCat (`react-native-purchases`). Products: Apple `com.ctuckersolutions.forkit.pro.monthly`, Google `forkit_pro_monthly`. Google Play product is ACTIVE. Apple product created but needs price set in ASC. Early adopters get `pro` entitlement via RevenueCat promotional grants.
 - **Web joiner**: `web/public/group/index.html` — standalone HTML/JS page for browser-based group joining (no app required)
-- **Interactive Tour**: 11-step spotlight overlay, auto-launches on first open or when `TOUR_VERSION` bumped. Back/Next navigation. Covers all features + free/Pro explainer. Replayable from info modal ("Take a Tour" button). Tour refs attached to key UI elements via `tourRefs` object.
+- **Interactive Tour**: 12-step spotlight overlay, auto-launches on first open or when `TOUR_VERSION` bumped. Back/Next navigation. Covers all features + free/Pro explainer. Replayable from info modal ("Take a Tour" button). Tour refs attached to key UI elements via `tourRefs` object.
+- **Custom Spot Tags**: Spots have a `tags` field (comma-separated string). During fork, spots are filtered by cuisine keyword (matched against tags + name) and exclude terms. No tags = spot only appears when no keyword is set.
+- **Fork Around Session Persistence**: Host session saved to AsyncStorage on create, restored on app restart + notification deep-link. Backend `rejoin.js` endpoint verifies code+hostId.
 - **Color theory**: Orange (`THEME.accent`) = problem/challenge/call-to-action. Teal (`THEME.pop`) = solution/answer/resolution. Applied to headings, buttons, and branding throughout.
 
 ## Future Ideas (Pinned)

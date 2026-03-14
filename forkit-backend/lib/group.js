@@ -1,7 +1,7 @@
 // ForkIt Backend - Group Fork session management
 // Uses Redis (via ioredis) for ephemeral session storage
 
-import Redis from 'ioredis';
+import Redis from "ioredis";
 
 let redis;
 function getRedis() {
@@ -13,14 +13,14 @@ function getRedis() {
 const SESSION_TTL = 3600; // 1 hour — sessions auto-expire
 const CODE_LENGTH = 4;
 const MAX_PARTICIPANTS = 8;
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1 for readability
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I/O/0/1 for readability
 
 /**
  * Generate a short, readable session code.
  * @returns {string} e.g. "W7KP"
  */
 function generateCode() {
-  let code = '';
+  let code = "";
   for (let i = 0; i < CODE_LENGTH; i++) {
     code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
   }
@@ -54,7 +54,7 @@ async function getJSON(key) {
  * @returns {Promise<void>}
  */
 async function setJSON(key, value) {
-  await getRedis().set(key, JSON.stringify(value), 'EX', SESSION_TTL);
+  await getRedis().set(key, JSON.stringify(value), "EX", SESSION_TTL);
 }
 
 /**
@@ -62,16 +62,17 @@ async function setJSON(key, value) {
  * @param {string} hostName - display name for the host
  * @param {{latitude: number, longitude: number}} coords - host's location
  * @param {string} locationName - human-readable name for the host's location (e.g. "NSSTC")
+ * @param {string|null} pushToken - Expo push token for host notifications
  * @returns {Promise<{code: string, hostId: string, session: object}>}
  */
-export async function createSession(hostName, coords, locationName) {
+export async function createSession(hostName, coords, locationName, pushToken) {
   // Try up to 5 times to find an unused code
   let code;
   for (let i = 0; i < 5; i++) {
     code = generateCode();
     const existing = await getJSON(sessionKey(code));
     if (!existing) break;
-    if (i === 4) throw new Error('CODE_COLLISION');
+    if (i === 4) throw new Error("CODE_COLLISION");
   }
 
   const hostId = generateCode() + generateCode(); // 8-char participant ID
@@ -79,8 +80,8 @@ export async function createSession(hostName, coords, locationName) {
     code,
     hostId,
     coords,
-    locationName: locationName || '',
-    status: 'waiting', // waiting | picking | done
+    locationName: locationName || "",
+    status: "waiting", // waiting | picking | done
     createdAt: Date.now(),
     participants: {
       [hostId]: {
@@ -91,6 +92,7 @@ export async function createSession(hostName, coords, locationName) {
       },
     },
     result: null,
+    hostPushToken: pushToken || null,
   };
 
   await setJSON(sessionKey(code), session);
@@ -115,11 +117,11 @@ export async function getSession(code) {
 export async function joinSession(code, name) {
   const key = sessionKey(code);
   const session = await getJSON(key);
-  if (!session) throw new Error('SESSION_NOT_FOUND');
-  if (session.status !== 'waiting') throw new Error('SESSION_NOT_JOINABLE');
+  if (!session) throw new Error("SESSION_NOT_FOUND");
+  if (session.status !== "waiting") throw new Error("SESSION_NOT_JOINABLE");
 
   const participantCount = Object.keys(session.participants).length;
-  if (participantCount >= MAX_PARTICIPANTS) throw new Error('SESSION_FULL');
+  if (participantCount >= MAX_PARTICIPANTS) throw new Error("SESSION_FULL");
 
   const participantId = generateCode() + generateCode();
   session.participants[participantId] = {
@@ -138,16 +140,20 @@ export async function joinSession(code, name) {
  * @param {string} code - session code
  * @param {string} participantId - the participant's ID
  * @param {object} filters - { radiusMiles, maxPrice, minRating, openNow, cuisineKeyword, hiddenGems }
+ * @param {string} [name] - optional display name update
  * @returns {Promise<object>} updated session
  */
-export async function submitFilters(code, participantId, filters) {
+export async function submitFilters(code, participantId, filters, name) {
   const key = sessionKey(code);
   const session = await getJSON(key);
-  if (!session) throw new Error('SESSION_NOT_FOUND');
-  if (!session.participants[participantId]) throw new Error('NOT_IN_SESSION');
-  if (session.status !== 'waiting') throw new Error('SESSION_NOT_JOINABLE');
+  if (!session) throw new Error("SESSION_NOT_FOUND");
+  if (!session.participants[participantId]) throw new Error("NOT_IN_SESSION");
+  if (session.status !== "waiting") throw new Error("SESSION_NOT_JOINABLE");
 
   session.participants[participantId].filters = filters;
+  if (name && typeof name === "string") {
+    session.participants[participantId].name = name.trim().slice(0, 20);
+  }
   await setJSON(key, session);
   return session;
 }
@@ -174,13 +180,17 @@ export function mergeFilters(participants) {
   for (const p of entries) {
     const f = p.filters;
     if (f.radiusMiles < minRadius) minRadius = f.radiusMiles;
-    if (f.maxPrice != null && f.maxPrice < lowestMaxPrice) lowestMaxPrice = f.maxPrice;
-    if (f.minRating != null && f.minRating > highestMinRating) highestMinRating = f.minRating;
+    // intentional: != null catches both null and undefined
+    if (f.maxPrice != null && f.maxPrice < lowestMaxPrice)
+      lowestMaxPrice = f.maxPrice;
+    // intentional: != null catches both null and undefined
+    if (f.minRating != null && f.minRating > highestMinRating)
+      highestMinRating = f.minRating;
     if (f.openNow) openNow = true;
     if (f.hiddenGems) hiddenGems = true;
     if (f.cuisineKeyword?.trim()) keywords.push(f.cuisineKeyword.trim());
     if (f.excludeKeyword?.trim()) {
-      f.excludeKeyword.split(',').forEach((t) => {
+      f.excludeKeyword.split(",").forEach((t) => {
         const term = t.trim().toLowerCase();
         if (term && !excludeTerms.includes(term)) excludeTerms.push(term);
       });
@@ -207,15 +217,17 @@ export function mergeFilters(participants) {
 export async function startPick(code, hostId) {
   const key = sessionKey(code);
   const session = await getJSON(key);
-  if (!session) throw new Error('SESSION_NOT_FOUND');
-  if (session.hostId !== hostId) throw new Error('NOT_HOST');
-  if (session.status !== 'waiting') throw new Error('ALREADY_PICKING');
+  if (!session) throw new Error("SESSION_NOT_FOUND");
+  if (session.hostId !== hostId) throw new Error("NOT_HOST");
+  if (session.status !== "waiting") throw new Error("ALREADY_PICKING");
 
   // Check at least 2 participants have submitted filters
-  const readyCount = Object.values(session.participants).filter((p) => p.filters).length;
-  if (readyCount < 2) throw new Error('NOT_ENOUGH_READY');
+  const readyCount = Object.values(session.participants).filter(
+    (p) => p.filters,
+  ).length;
+  if (readyCount < 2) throw new Error("NOT_ENOUGH_READY");
 
-  session.status = 'picking';
+  session.status = "picking";
   await setJSON(key, session);
   return { session, mergedFilters: mergeFilters(session.participants) };
 }
@@ -224,16 +236,23 @@ export async function startPick(code, hostId) {
  * Save the pick result to the session.
  * @param {string} code - session code
  * @param {object} result - the picked restaurant
+ * @param {object} [mergedFilters] - merged filter set used for the pick
  * @returns {Promise<object>} updated session
  */
 export async function saveResult(code, result, mergedFilters) {
   const key = sessionKey(code);
   const session = await getJSON(key);
-  if (!session) throw new Error('SESSION_NOT_FOUND');
+  if (!session) throw new Error("SESSION_NOT_FOUND");
 
-  session.status = 'done';
-  session.result = result;
-  if (mergedFilters) session.mergedFilters = mergedFilters;
+  if (result) {
+    session.status = "done";
+    session.result = result;
+    if (mergedFilters) session.mergedFilters = mergedFilters;
+  } else {
+    // No results — reset to waiting so participants can edit filters and retry
+    session.status = "waiting";
+    session.result = null;
+  }
   await setJSON(key, session);
   return session;
 }
@@ -247,10 +266,10 @@ export async function saveResult(code, result, mergedFilters) {
 export async function leaveSession(code, participantId) {
   const key = sessionKey(code);
   const session = await getJSON(key);
-  if (!session) throw new Error('SESSION_NOT_FOUND');
+  if (!session) throw new Error("SESSION_NOT_FOUND");
 
   const participant = session.participants[participantId];
-  if (!participant) throw new Error('NOT_IN_SESSION');
+  if (!participant) throw new Error("NOT_IN_SESSION");
 
   // If host leaves, kill the session
   if (participant.isHost) {
@@ -261,4 +280,50 @@ export async function leaveSession(code, participantId) {
   delete session.participants[participantId];
   await setJSON(key, session);
   return session;
+}
+
+/**
+ * Update the host's push token (e.g. after app restart).
+ * @param {string} code - session code
+ * @param {string} pushToken - new Expo push token
+ * @returns {Promise<void>}
+ */
+export async function updateHostPushToken(code, pushToken) {
+  const key = sessionKey(code.toUpperCase());
+  const session = await getJSON(key);
+  if (!session) return;
+  session.hostPushToken = pushToken;
+  await setJSON(key, session);
+}
+
+/**
+ * Send a push notification to the session host via Expo Push API.
+ * Fire-and-forget — never throws.
+ * @param {string} token - Expo push token
+ * @param {string} title - notification title
+ * @param {string} body - notification body
+ * @param {object} data - extra data payload
+ */
+export async function sendPushToHost(token, title, body, data = {}) {
+  if (!token) return;
+  try {
+    await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Accept-Encoding": "gzip, deflate",
+      },
+      body: JSON.stringify({
+        to: token,
+        title,
+        body,
+        data,
+        sound: "default",
+        channelId: "group-session",
+      }),
+    });
+  } catch (_) {
+    // Non-critical — swallow
+  }
 }

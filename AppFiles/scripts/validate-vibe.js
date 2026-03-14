@@ -15,6 +15,12 @@
  * 10. Dead state variables (useState declared but value never read)
  * 11. Duplicate function definitions
  * 12. Permission–code mismatch (declared vs actually used)
+ * 13. IAP / Subscription compliance
+ * 14. Paywall & entitlement logic
+ * 15. Cross-file prop consistency (destructured props must be passed)
+ * 16. Cross-file style references (styles.xxx must have a source)
+ * 17. Circular dependency detection
+ * 18. Orphan exports (exported but never imported)
  */
 
 const fs = require('fs');
@@ -49,7 +55,7 @@ function collectJsFiles(dir) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       // Skip the scripts directory (contains this validator and other tooling)
-      if (entry.name === 'scripts') continue;
+      if (entry.name === 'scripts' || entry.name === 'dist') continue;
       results.push(...collectJsFiles(full));
     } else if (/\.(js|jsx)$/.test(entry.name)) {
       results.push(full);
@@ -662,6 +668,351 @@ if (fs.existsSync(appJsonPath)) {
 } else {
   console.log('  SKIP (no app.json)');
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 13. IAP / Subscription compliance
+// ─────────────────────────────────────────────────────────────────────────────
+heading(13, 'IAP / Subscription compliance');
+
+const errsBefore13 = errors;
+
+if (fs.existsSync(appJsonPath)) {
+  const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8'));
+  const expo = appJson.expo || appJson;
+  const allSource = jsFiles.map((f) => fs.readFileSync(f, 'utf8')).join('\n');
+
+  const hasRCImport = /react-native-purchases/.test(allSource);
+  const hasBillingPerm =
+    expo.android &&
+    expo.android.permissions &&
+    expo.android.permissions.includes('com.android.vending.BILLING');
+
+  if (hasRCImport) {
+    // react-native-purchases uses autolinking, not config plugins — no plugin check needed
+    // Android billing permission must exist
+    if (!hasBillingPerm) {
+      error(
+        13,
+        'react-native-purchases used but com.android.vending.BILLING not in Android permissions',
+      );
+    }
+    // SDK init must be guarded against web
+    const initPattern = /Purchases\.configure/;
+    if (initPattern.test(allSource)) {
+      // Check that configure is inside a platform guard
+      for (const file of jsFiles) {
+        const source = fs.readFileSync(file, 'utf8');
+        const lines = source.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          if (/Purchases\.configure/.test(lines[i])) {
+            // Look back up to 10 lines for a Platform.OS or web guard
+            const context = lines.slice(Math.max(0, i - 10), i + 1).join('\n');
+            if (
+              !/Platform\.OS/.test(context) &&
+              !/!== ['"]web['"]/.test(context) &&
+              !/web/.test(context)
+            ) {
+              error(
+                13,
+                `${path.relative(ROOT, file)}:${i + 1} — Purchases.configure without Platform.OS web guard`,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    // Must have restorePurchases call
+    if (!/restorePurchases|Purchases\.restoreTransactions/.test(allSource)) {
+      error(13, 'No restorePurchases call found — Apple requires a Restore Purchases button');
+    }
+
+    // Must have auto-renewal disclosure text
+    if (!/auto-renew|Auto-renew|cancel anytime|Cancel anytime/i.test(allSource)) {
+      error(13, 'No auto-renewal disclosure text found — required by Apple/Google');
+    }
+  }
+
+  if (errors === errsBefore13) console.log('  OK');
+} else {
+  console.log('  SKIP (no app.json)');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 14. Paywall & entitlement logic
+// ─────────────────────────────────────────────────────────────────────────────
+heading(14, 'Paywall & entitlement logic');
+
+const errsBefore14 = errors;
+const warnsBefore14 = warnings;
+
+for (const file of jsFiles) {
+  const source = fs.readFileSync(file, 'utf8');
+  const rel = path.relative(ROOT, file);
+  const lines = source.split('\n');
+
+  // Check for pro status stored only in AsyncStorage without RevenueCat verification
+  const hasAsyncStoragePro = /AsyncStorage.*pro|@forkit.*pro/i.test(source);
+  const hasRCEntitlementCheck = /getCustomerInfo|customerInfo|entitlements/i.test(source);
+
+  if (hasAsyncStoragePro && !hasRCEntitlementCheck) {
+    warn(14, `${rel} — Pro status in AsyncStorage but no RevenueCat entitlement check found`);
+  }
+
+  // Check that purchase calls are wrapped in try/catch
+  for (let i = 0; i < lines.length; i++) {
+    if (/purchasePackage|purchaseProduct|purchaseStoreProduct/.test(lines[i])) {
+      const context = lines.slice(Math.max(0, i - 5), i + 1).join('\n');
+      if (!/try\s*\{/.test(context)) {
+        error(14, `${rel}:${i + 1} — Purchase call without try/catch error handling`);
+      }
+    }
+  }
+
+  // Check for hardcoded price that could drift from store
+  for (let i = 0; i < lines.length; i++) {
+    if (/\$1\.99/.test(lines[i]) && !/comment|Comment|\/\//.test(lines[i])) {
+      // Only warn — hardcoded price labels are common, but should ideally come from store
+      const trimmed = lines[i].trim();
+      if (!trimmed.startsWith('//') && !trimmed.startsWith('*')) {
+        warn(
+          14,
+          `${rel}:${i + 1} — Hardcoded price "$1.99" — consider fetching from store offerings`,
+        );
+      }
+    }
+  }
+}
+
+if (errors === errsBefore14 && warnings === warnsBefore14) console.log('  OK');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 15. Cross-file prop consistency
+// ─────────────────────────────────────────────────────────────────────────────
+heading(15, 'Cross-file prop consistency');
+
+const errsBefore15 = errors;
+
+// Build a map of component definitions: { ComponentName: { file, props: Set } }
+const componentDefs = new Map();
+// Build a map of component usages: { ComponentName: [{ file, passedProps: Set }] }
+const componentUsages = new Map();
+
+for (const file of jsFiles) {
+  const source = fs.readFileSync(file, 'utf8');
+  const rel = path.relative(ROOT, file);
+
+  // Find function components with destructured props:
+  // function Foo({ a, b, c }) or const Foo = ({ a, b, c }) =>
+  const funcDefs = [
+    ...source.matchAll(/^(?:export\s+)?function\s+([A-Z]\w+)\s*\(\{\s*([\s\S]*?)\}\)/gm),
+    ...source.matchAll(/^(?:export\s+)?const\s+([A-Z]\w+)\s*=\s*\(\{\s*([\s\S]*?)\}\)\s*=>/gm),
+  ];
+
+  for (const fd of funcDefs) {
+    const name = fd[1];
+    const propsBlock = fd[2];
+    // Extract prop names (handle multiline, trailing commas, defaults)
+    const props = new Set();
+    for (const pm of propsBlock.matchAll(/(\w+)(?:\s*=\s*[^,}]+)?/g)) {
+      props.add(pm[1]);
+    }
+    if (props.size > 0) {
+      componentDefs.set(name, { file: rel, props });
+    }
+  }
+
+  // Find JSX usages: <ComponentName prop1={...} prop2 prop3="..." />
+  // Match both self-closing and opening tags, including multiline
+  const usagePattern = /<([A-Z]\w+)([\s\S]*?)(?:\/>|(?<!=)>)/g;
+  let um;
+  while ((um = usagePattern.exec(source)) !== null) {
+    const name = um[1];
+    const attrsBlock = um[2];
+    const passedProps = new Set();
+    passedProps.add('children'); // children always implicitly available via JSX
+    // Match: prop={...}, prop="...", prop='...', or bare boolean prop
+    for (const am of attrsBlock.matchAll(/\b(\w+)(?:\s*=)?/g)) {
+      passedProps.add(am[1]);
+    }
+    if (!componentUsages.has(name)) componentUsages.set(name, []);
+    componentUsages.get(name).push({ file: rel, passedProps });
+  }
+}
+
+// Check: props destructured in component but never passed by any cross-file caller
+// Use a simple text search: look for "propName=" or "propName}" near <ComponentName in caller files
+for (const [name, def] of componentDefs) {
+  // Find files that reference this component (cross-file only)
+  const callerFiles = [];
+  for (const file of jsFiles) {
+    const rel = path.relative(ROOT, file);
+    if (rel === def.file) continue; // skip same-file
+    const src = fs.readFileSync(file, 'utf8');
+    if (src.includes(`<${name}`)) {
+      callerFiles.push({ file: rel, source: src });
+    }
+  }
+  if (callerFiles.length === 0) continue;
+
+  for (const prop of def.props) {
+    if (prop === 'children') continue; // always implicitly available
+    // Check if any caller file contains the prop name as a JSX attribute
+    // Matches: prop={, prop=", or bare boolean prop followed by whitespace/newline/>
+    const propPattern = new RegExp(`\\b${prop}\\b(?:\\s*[={]|\\s*[/\\n>])`, 'g');
+    const everPassed = callerFiles.some((cf) => propPattern.test(cf.source));
+    if (!everPassed) {
+      error(
+        15,
+        `<${name}> destructures "${prop}" but no cross-file caller passes it (defined in ${def.file})`,
+      );
+    }
+  }
+}
+
+if (errors === errsBefore15) console.log('  OK');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 16. Cross-file style references
+// ─────────────────────────────────────────────────────────────────────────────
+heading(16, 'Cross-file style references');
+
+const errsBefore16 = errors;
+
+for (const file of jsFiles) {
+  const source = fs.readFileSync(file, 'utf8');
+  const rel = path.relative(ROOT, file);
+
+  // Find styles.xxx references
+  const styleRefs = new Set();
+  for (const rm of source.matchAll(/styles\.(\w+)/g)) {
+    styleRefs.add(rm[1]);
+  }
+  if (styleRefs.size === 0) continue;
+
+  // Check if this file defines its own StyleSheet or imports one
+  const hasLocalSheet = /StyleSheet\.create/.test(source);
+  const importsStyles = /import\s+.*styles.*from/i.test(source) || /require.*styles/i.test(source);
+
+  if (styleRefs.size > 0 && !hasLocalSheet && !importsStyles) {
+    // File uses styles.xxx but has no StyleSheet and no style import
+    error(16, `${rel} references styles.* but has no StyleSheet.create() or style import`);
+  }
+}
+
+if (errors === errsBefore16) console.log('  OK');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 17. Circular dependency detection
+// ─────────────────────────────────────────────────────────────────────────────
+heading(17, 'Circular dependency detection');
+
+const errsBefore17 = errors;
+
+// Build import graph for local files
+const importGraph = new Map(); // file -> Set of files it imports
+
+for (const file of jsFiles) {
+  const source = fs.readFileSync(file, 'utf8');
+  const dir = path.dirname(file);
+  const imports = new Set();
+
+  const localImports = [...source.matchAll(/(?:from|require\()\s*['"](\.[^'"]+)['"]/g)];
+  for (const li of localImports) {
+    const specifier = li[1];
+    const base = path.resolve(dir, specifier);
+    // Resolve to actual file
+    const resolved = extensions.map((ext) => base + ext).find((p) => fs.existsSync(p));
+    if (resolved) imports.add(resolved);
+  }
+
+  importGraph.set(file, imports);
+}
+
+// Detect direct circular imports (A imports B, B imports A)
+const reportedCycles = new Set();
+for (const [fileA, importsA] of importGraph) {
+  for (const fileB of importsA) {
+    const importsB = importGraph.get(fileB);
+    if (importsB && importsB.has(fileA)) {
+      const pair = [fileA, fileB].sort().join(' <-> ');
+      if (!reportedCycles.has(pair)) {
+        reportedCycles.add(pair);
+        error(17, `Circular: ${path.relative(ROOT, fileA)} <-> ${path.relative(ROOT, fileB)}`);
+      }
+    }
+  }
+}
+
+if (errors === errsBefore17) console.log('  OK');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 18. Orphan exports
+// ─────────────────────────────────────────────────────────────────────────────
+heading(18, 'Orphan exports');
+
+const warnsBefore18 = warnings;
+
+// Collect all exports from each file
+const fileExports = new Map(); // file -> Set of exported names
+for (const file of jsFiles) {
+  const source = fs.readFileSync(file, 'utf8');
+  const exported = new Set();
+
+  // export function Foo / export const Foo / export default
+  for (const em of source.matchAll(
+    /^export\s+(?:default\s+)?(?:async\s+)?(?:function|const|class)\s+(\w+)/gm,
+  )) {
+    exported.add(em[1]);
+  }
+  // export { Foo, Bar }
+  for (const em of source.matchAll(/export\s*\{([^}]+)\}/g)) {
+    for (const name of em[1].split(',')) {
+      const trimmed = name
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        .trim();
+      if (trimmed) exported.add(trimmed);
+    }
+  }
+
+  if (exported.size > 0) fileExports.set(file, exported);
+}
+
+// Collect all imports across all files
+const allImportedNames = new Set();
+for (const file of jsFiles) {
+  const source = fs.readFileSync(file, 'utf8');
+  // import { Foo, Bar } from '...'
+  for (const im of source.matchAll(/import\s*\{([^}]+)\}\s*from/g)) {
+    for (const name of im[1].split(',')) {
+      const trimmed = name
+        .trim()
+        .split(/\s+as\s+/)[0]
+        .trim();
+      if (trimmed) allImportedNames.add(trimmed);
+    }
+  }
+  // import Foo from '...'
+  for (const im of source.matchAll(/import\s+(\w+)\s+from/g)) {
+    allImportedNames.add(im[1]);
+  }
+}
+
+// Entry point exports don't need to be imported (they're used by the framework)
+const entryFiles = new Set([path.join(ROOT, 'App.js'), path.join(ROOT, 'index.js')]);
+
+for (const [file, exported] of fileExports) {
+  if (entryFiles.has(file)) continue;
+  for (const name of exported) {
+    if (!allImportedNames.has(name)) {
+      warn(18, `${path.relative(ROOT, file)} exports "${name}" but nothing imports it`);
+    }
+  }
+}
+
+if (warnings === warnsBefore18) console.log('  OK');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Summary

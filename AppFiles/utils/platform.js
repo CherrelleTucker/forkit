@@ -1,7 +1,10 @@
 import * as Haptics from 'expo-haptics';
 import { Alert, Platform } from 'react-native';
 
-// Haptics wrapper — no-op on web
+/**
+ * Haptics wrapper — provides selectionAsync and notificationAsync. No-op on web.
+ * @type {{selectionAsync: Function, notificationAsync: Function, NotificationFeedbackType: object}}
+ */
 export const haptics = {
   selectionAsync: async () => {
     if (Platform.OS !== 'web') {
@@ -16,7 +19,12 @@ export const haptics = {
   NotificationFeedbackType: Haptics.NotificationFeedbackType,
 };
 
-// Alert wrapper — window.alert on web, native Alert on mobile
+/**
+ * Cross-platform alert — window.alert/confirm on web, native Alert on mobile.
+ * @param {string} title - Alert title
+ * @param {string} [message] - Alert body text
+ * @param {Array<{text: string, onPress?: Function}>} [buttons] - Action buttons
+ */
 export const showAlert = (title, message, buttons) => {
   if (Platform.OS === 'web') {
     if (buttons?.length) {

@@ -16,6 +16,10 @@ AppFiles/assets/icon-temp.png
 .env
 .env.local
 
+# Private keys & credentials
+*.p8
+*service-account*.json
+
 # Dependencies
 node_modules/
 
@@ -29,3 +33,6 @@ nul
 
 # Mockups / scratch
 mockup-*.html
+
+# Test files
+test-push.apns

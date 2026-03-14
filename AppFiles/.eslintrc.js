@@ -317,6 +317,7 @@ module.exports = {
         'security/detect-non-literal-regexp': 'off',
         'security/detect-unsafe-regex': 'off',
         'max-depth': 'off',
+        'max-lines': 'off',
         'import/order': 'off',
       },
     },

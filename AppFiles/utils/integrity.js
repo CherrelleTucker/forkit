@@ -95,13 +95,15 @@ export async function verifyIntegrityToken(token, backendUrl) {
   }
 }
 
-/** Generate a nonce for integrity token requests.
+/** Generate a cryptographically random nonce for integrity token requests.
  * @returns {string} A unique nonce string
  */
 function generateNonce() {
   const timestamp = Date.now().toString();
-  const RADIX = 36;
-  const RANDOM_LENGTH = 15;
-  const random = Math.random().toString(RADIX).substring(2, RANDOM_LENGTH);
+  const NONCE_BYTES = 16;
+  const bytes = new Uint8Array(NONCE_BYTES);
+  // eslint-disable-next-line no-undef -- globalThis.crypto is available in RN Hermes
+  globalThis.crypto.getRandomValues(bytes);
+  const random = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(''); // eslint-disable-line no-magic-numbers -- hex encoding
   return `${timestamp}-${random}`;
 }

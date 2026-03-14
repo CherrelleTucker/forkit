@@ -14,9 +14,12 @@ ForkIt! is a random restaurant picker that removes decision fatigue. One tap, on
 - **Walk or drive** — Travel mode filter with smart walk-mode suggestions in dense areas
 - **Skip the chains** — Hidden Gems mode filters out chain restaurants so you discover local spots
 - **Cuisine filters** — Distance, price, rating, keyword, open now
-- **Fork Around** — Group restaurant picking with friends. Host creates a session, shares a code or link, everyone sets filters, app picks from the overlap
-- **Save Mom's house to the rotation** — Add custom spots to the random pool
+- **Fork Around** — Group restaurant picking with friends. Host creates a session, shares a code or link, everyone sets filters, app picks from the overlap. Sessions persist if the host closes the app, and push notifications alert when friends submit filters. 1 free session/month, unlimited with Pro
+- **Pool caching** — First tap fetches the full pool; re-rolls pick locally with zero API calls until filters change or the cache expires
+- **Save Mom's house to the rotation** — Add custom spots with tags (e.g. "pasta, homecooking") so they filter alongside Google results
 - **Block the restaurant your ex works at** — Permanently exclude places you never want to see
+- **Interactive tour** — 12-step spotlight walkthrough on first launch, replayable from info modal
+- **Pro subscription** — 20 free searches + 1 Fork Around/month. Pro ($1.99/month) removes all limits
 - **Closing soon warnings** — Skips places closing within 30 min, warns you about places closing within 60 min
 - **Search near a different location** — Enter an address instead of using GPS
 - **Favorites** — Save restaurants you love
@@ -27,8 +30,8 @@ ForkIt! is a random restaurant picker that removes decision fatigue. One tap, on
 
 | Platform | Status | Version |
 |----------|--------|---------|
-| Android  | Live on Google Play | v1.1.0 |
-| iOS      | Live on App Store | v1.1.0 |
+| Android  | Live on Google Play | v2.0.0 |
+| iOS      | Live on App Store | v2.0.0 |
 | Web      | Landing page + Fork Around joiner | — |
 
 ---
@@ -38,9 +41,11 @@ ForkIt! is a random restaurant picker that removes decision fatigue. One tap, on
 ```
 forkit/
 ├── AppFiles/              # React Native + Expo (SDK 54) mobile app
-│   ├── App.js             # Single-file app (all UI + logic)
+│   ├── App.js             # Main orchestrator
 │   ├── app.json           # Expo config
-│   └── utils/             # Platform wrappers (location, haptics)
+│   ├── components/        # UI components (modals, buttons, tour, etc.)
+│   ├── constants/         # Config, theme, storage keys, content
+│   └── utils/             # Platform wrappers, helpers, API, storage
 ├── forkit-backend/        # Vercel serverless functions (Node.js, ESM)
 │   ├── api/               # places-nearby, places-details, verify-integrity
 │   └── api/group/         # Fork Around endpoints (create, join, filters, status, pick, leave)
@@ -101,6 +106,7 @@ cd AppFiles && eas build --platform android --profile production
 - No accounts, no login, no personal data collection
 - No analytics or behavior tracking
 - Fork Around sessions auto-delete after 1 hour
+- Push notifications used only for Fork Around session updates — no marketing notifications
 
 [Full Privacy Policy](https://CherrelleTucker.github.io/forkit/privacy.html)
 

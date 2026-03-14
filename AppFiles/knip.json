@@ -1,9 +1,8 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["App.js"],
+  "entry": ["App.js", "components/*.js", "utils/*.js", "constants/*.js"],
   "ignoreDependencies": [
     "react-dom",
-    "react-native-web",
     "expo-system-ui",
     "husky",
     "lint-staged",

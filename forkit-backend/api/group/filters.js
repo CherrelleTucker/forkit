@@ -1,6 +1,6 @@
 // ForkIt Backend - Group Fork: Submit Filters
 import { runSecurityChecks } from '../../lib/security.js';
-import { submitFilters } from '../../lib/group.js';
+import { submitFilters, getSession, sendPushToHost } from '../../lib/group.js';
 
 export default async function handler(req, res) {
   if (!runSecurityChecks(req, res)) return;
@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  const { code, participantId, filters } = req.body || {};
+  const { code, participantId, filters, name } = req.body || {};
 
   if (!code || !participantId) {
     return res.status(400).json({ error: 'code and participantId are required.' });
@@ -31,7 +31,20 @@ export default async function handler(req, res) {
   };
 
   try {
-    const session = await submitFilters(code.trim(), participantId, sanitized);
+    const session = await submitFilters(code.trim(), participantId, sanitized, name);
+    // Notify host when a non-host submits filters (fire-and-forget)
+    const participant = session.participants[participantId];
+    console.log('[group/filters] hostPushToken:', session.hostPushToken ? 'yes' : 'null', 'isHost:', participant?.isHost);
+    if (session.hostPushToken && participant && !participant.isHost) {
+      const readyCount = Object.values(session.participants).filter((p) => p.filters).length;
+      const total = Object.keys(session.participants).length;
+      sendPushToHost(
+        session.hostPushToken,
+        'Fork Around',
+        `${participant.name} is ready! (${readyCount}/${total})`,
+        { type: 'group_filters', code: session.code },
+      );
+    }
     return res.status(200).json({
       participants: Object.values(session.participants).map((p) => ({
         name: p.name,

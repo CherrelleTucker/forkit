@@ -1,1865 +1,202 @@
 // ForkIt — Main app (App.js)
 
 import { Ionicons } from '@expo/vector-icons';
-import { useFonts, Montserrat_700Bold } from '@expo-google-fonts/montserrat';
+import {
+  useFonts,
+  Montserrat_500Medium,
+  Montserrat_600SemiBold,
+  Montserrat_700Bold,
+} from '@expo-google-fonts/montserrat';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Notifications from 'expo-notifications';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  Dimensions,
   Easing,
   Linking,
-  Modal,
   Platform,
   RefreshControl,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import Purchases from 'react-native-purchases';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Path, G } from 'react-native-svg';
 
+import BlockedModal from './components/BlockedModal';
+import Chip from './components/Chip';
+import CustomPlacesModal from './components/CustomPlacesModal';
+import FavoritesModal from './components/FavoritesModal';
+import FeaturePills from './components/FeaturePills';
+import ForkIcon from './components/ForkIcon';
+import GhostButton from './components/GhostButton';
+import GlassCard from './components/GlassCard';
+import GroupForkModal from './components/GroupForkModal';
+import InfoModal from './components/InfoModal';
+import LocationSearchSection from './components/LocationSearchSection';
+import PrimaryButton from './components/PrimaryButton';
+import Toast from './components/Toast';
+import TourOverlay from './components/TourOverlay';
+import UsageHint from './components/UsageHint';
+import {
+  BACKEND_URL,
+  TOAST_SHORT,
+  TOAST_DEFAULT,
+  TOAST_LONG,
+  FETCH_TIMEOUT,
+  DEBOUNCE_DELAY,
+  THROTTLE_WINDOW,
+  THROTTLE_MAX_TAPS,
+  RECENTLY_SHOWN_MAX,
+  POOL_STALE_MS,
+  WALK_RESULTS_THRESHOLD,
+  CLOSING_SOON_EXCLUDE_MIN,
+  MILES_TO_METERS,
+  HTTP_TOO_MANY_REQUESTS,
+  BOUNCE_OFFSET,
+  DEFAULT_TOAST_MS,
+  THROTTLE_TOAST_MS,
+  WALK_SUGGEST_DELAY,
+  SLOT_BASE_DELAY,
+  SLOT_INCREMENT,
+  SLOT_MIN_CYCLES,
+  SLOT_MAX_CYCLES,
+  DRAMATIC_PAUSE,
+  FAV_TOAST_MS,
+  RATING_LOW,
+  RATING_DEFAULT,
+  RATING_HIGH,
+  RATING_TOP,
+  WALK_RADIUS_MAX,
+  WALK_RADIUS_DEFAULT,
+  DRIVE_RADIUS_MIN,
+  DRIVE_RADIUS_DEFAULT,
+  RADIUS_CLAMP_MIN,
+  RADIUS_CLAMP_MAX,
+  TITLE_FONT_SIZE,
+  TITLE_LINE_HEIGHT,
+  GROUP_RESULT_EXPIRY_MS,
+  GROUP_RESULT_TICK_MS,
+} from './constants/config';
+import { FORKING_LINES, SUCCESS_LINES, FAIL_LINES } from './constants/content';
+import { STORAGE_KEYS } from './constants/storage';
+import { THEME, scale } from './constants/theme';
+import useGroupSession from './hooks/useGroupSession';
+import useTour from './hooks/useTour';
+import useUsage from './hooks/useUsage';
+import { fetchAddressSuggestions, getPlaceDetails } from './utils/api';
+import { blockPlace, isBlocked } from './utils/blocked';
+import { toggleFavorite } from './utils/favorites';
+import {
+  safeStore,
+  clamp,
+  pickRandom,
+  dollars,
+  sleep,
+  looksLikeChain,
+  getSignatureDish,
+  buildRecipeLinks,
+  matchesExclude,
+  getMinutesUntilClosing,
+  getClosingSoonToast,
+  openMapsSearchByText,
+  callPhone,
+} from './utils/helpers';
 import { getIntegrityToken, verifyIntegrityToken } from './utils/integrity';
 import { requestLocationPermission, getCurrentPosition } from './utils/location';
 import { haptics, showAlert } from './utils/platform';
-
-// Bootstrap Fork Icon - tines down with teal pea
-function ForkIcon({ size = 24, color = THEME.accent, rotation = '0deg' }) {
-  const width = size * (6 / 20);
-  const height = size;
-  return (
-    <Svg
-      width={width}
-      height={height}
-      viewBox="2.5 0 6 20"
-      style={{ transform: [{ rotate: rotation }] }}
-    >
-      {/* Fork rotated 180° so tines point down, scaled narrower at tines */}
-      <G transform="rotate(180, 5.5, 8) translate(5.5, 0) scale(0.8, 1) translate(-5.5, 0)">
-        <Path
-          d="M4.25 0a.25.25 0 0 1 .25.25v5.122a.128.128 0 0 0 .256.006l.233-5.14A.25.25 0 0 1 5.24 0h.522a.25.25 0 0 1 .25.238l.233 5.14a.128.128 0 0 0 .256-.006V.25A.25.25 0 0 1 6.75 0h.29a.5.5 0 0 1 .498.458l.423 5.07a1.69 1.69 0 0 1-1.059 1.711l-.053.022a.92.92 0 0 0-.58.884L6.47 15a.971.971 0 1 1-1.942 0l.202-6.855a.92.92 0 0 0-.58-.884l-.053-.022a1.69 1.69 0 0 1-1.059-1.712L3.462.458A.5.5 0 0 1 3.96 0z"
-          fill={color}
-        />
-      </G>
-      {/* Teal pea below fork */}
-      <Circle cx="5.5" cy="18" r="1.5" fill={THEME.pop} />
-    </Svg>
-  );
-}
-
-// ==============================
-// CONFIG
-// ==============================
-
-// Backend API URL from environment variables
-// For local development, add to .env file
-// For EAS Build, use: eas secret:create --scope project --name EXPO_PUBLIC_BACKEND_URL --value your_url
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3000';
-
-// Timing constants (milliseconds)
-const TOAST_SHORT = 1200;
-const TOAST_DEFAULT = 1600;
-const TOAST_LONG = 2200;
-const FETCH_TIMEOUT = 15000;
-const DETAILS_TIMEOUT = 8000;
-const DEBOUNCE_DELAY = 350;
-const THROTTLE_WINDOW = 60000;
-const THROTTLE_MAX_TAPS = 8;
-const RECENTLY_SHOWN_MAX = 10;
-const POOL_STALE_MS = 14400000; // 4 hours — refetch pool after this
-const WALK_RESULTS_THRESHOLD = 25;
-const CLOSING_SOON_EXCLUDE_MIN = 30;
-const CLOSING_SOON_WARN_MIN = 60;
-const MINUTES_PER_HOUR = 60;
-const MINUTES_PER_DAY = 1440;
-const DAYS_PER_WEEK = 7;
-const OVERNIGHT_CUTOFF_MIN = 360;
-const WALK_CLOSE_RADIUS = 0.25;
-
-// Layout constants
-const SMALL_SCREEN_THRESHOLD = 700;
-const SMALL_SCREEN_SCALE = 0.85;
-const MODAL_CONTENT_RATIO = 0.65;
-const MODAL_LIST_RATIO = 0.55;
-const MODAL_SPOTS_RATIO = 0.35;
-const MILES_TO_METERS = 1609.34;
-
-// HTTP status codes
-const HTTP_TOO_MANY_REQUESTS = 429;
-
-// Animation & UI timing
-const BOUNCE_OFFSET = -5;
-const DEFAULT_TOAST_MS = 1700;
-const THROTTLE_TOAST_MS = 2000;
-const ADDED_TOAST_MS = 2000;
-const SPOTS_ERROR_TOAST_MS = 3000;
-const WALK_SUGGEST_DELAY = 2500;
-const SUPPORT_MODAL_DELAY = 300;
-const SLOT_BASE_DELAY = 45;
-const SLOT_INCREMENT = 6;
-const SLOT_MIN_CYCLES = 10;
-const SLOT_MAX_CYCLES = 16;
-const DRAMATIC_PAUSE = 250;
-const FAV_TOAST_MS = 1400;
-
-// Layout & sizing
-const SPOTS_SEARCH_THRESHOLD = 5;
-const SCROLL_THUMB_PERCENT = 70;
-
-// Rating thresholds
-const RATING_LOW = 3.5;
-const RATING_DEFAULT = 4.0;
-const RATING_HIGH = 4.3;
-const RATING_TOP = 4.5;
-
-// Walk mode radius thresholds
-const WALK_RADIUS_MAX = 1.5;
-const WALK_RADIUS_DEFAULT = 0.5;
-const DRIVE_RADIUS_MIN = 1;
-const DRIVE_RADIUS_DEFAULT = 3;
-const RADIUS_CLAMP_MIN = 0.25;
-const RADIUS_CLAMP_MAX = 15;
-
-// Title font sizing
-const TITLE_FONT_SIZE = 40;
-const TITLE_LINE_HEIGHT = 46;
-const EASTER_EGG_TAPS = 7;
-
-// Screen dimensions and responsive scaling
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const isSmallScreen = SCREEN_HEIGHT < SMALL_SCREEN_THRESHOLD;
-const scale = (size) => (isSmallScreen ? size * SMALL_SCREEN_SCALE : size);
-
-const STORAGE_KEYS = {
-  FAVORITES: '@forkit_favorites',
-  BLOCKED: '@forkit_blocked',
-  CUSTOM_PLACES: '@forkit_custom_places',
-  TRAVEL_MODE: '@forkit_travel_mode',
-  API_FETCH_COUNT: '@forkit_api_fetches',
-  SAVED_LOCATIONS: '@forkit_saved_locations',
-  FORK_USAGE: '@forkit_fork_usage',
-  // PRO_EXPIRES removed — Pro status now managed by RevenueCat
-  TOUR_VERSION: '@forkit_tour_version',
-};
-
-// Tip prompt — show after this many API fetches, then every N more
-const TIP_PROMPT_FIRST = 50;
-const TIP_PROMPT_INTERVAL = 75;
-
-// Free tier limits — resets on the 1st of each month
-const FREE_SOLO_FORKS = 20;
-const FREE_GROUP_FORKS = 1;
-const FREE_FORKS_NUDGE_THRESHOLD = 10; // soft Pro nudge after this many
-const PRO_PRICE_LABEL = '$1.99/month';
-const RC_APPLE_KEY = 'appl_MTGpBmaAXfqTCRdfHnprPbzEgGZ';
-const RC_GOOGLE_KEY = 'goog_IygUWURdGYnquZqXoyxBoNmYDua';
-const RC_ENTITLEMENT_ID = 'pro';
-
-// Tour
-const TOUR_VERSION = 2; // Bump to re-show tour after major feature additions
-const TOUR_STEP_COUNT = 11;
-const TOUR_LAUNCH_DELAY = 800;
-const TOUR_EXPAND_DELAY = 350;
-const TOUR_TOOLTIP_MIN_TOP = 40;
-const TOUR_TOOLTIP_HEIGHT = 195;
-const TOUR_ARROW_OFFSET = 30;
-const TOUR_SPOT_PAD = 6;
-const TOUR_SPOT_RADIUS = 14;
-const TOUR_SCROLL_SETTLE_MS = 600;
-const TOUR_STEPS = [
-  {
-    ref: 'forkBtn',
-    title: 'Just fork it.',
-    desc: "Tap the button and we'll pick a spot. Each tap re-rolls from the same pool for free \u2014 a new search only counts when your filters change or the pool refreshes.",
-    arrow: 'down',
-  },
-  {
-    ref: 'modeToggle',
-    title: 'Walk vs Drive',
-    desc: "In a city? Switch to walk mode for spots you can stroll to. If we find way more (or fewer) results than expected, we'll suggest switching modes.",
-    arrow: 'up',
-  },
-  {
-    ref: 'filtersToggle',
-    title: 'Filters',
-    desc: 'Tap here to open filters \u2014 distance, price, rating, cuisine, and more. You can use both keyword fields together \u2014 search "tacos" and exclude "Taco Bell." Just keep in mind: we can only filter by what restaurants list on their Google profile.',
-    arrow: 'up',
-    expandFilters: true,
-  },
-  {
-    ref: 'distanceRow',
-    title: 'How Far?',
-    desc: 'Pick your distance. These change based on walk or drive mode. Or tap the pin to search near a custom address.',
-    arrow: 'up',
-  },
-  {
-    ref: 'maxDamageRow',
-    title: 'Max Damage & At Least This Good',
-    desc: 'These filters are inclusive. $$ means \u201Cup to $$.\u201D 3 stars means \u201C3 stars and above.\u201D You get what you pick and everything below/above.',
-    arrow: 'up',
-  },
-  {
-    ref: 'openNowRow',
-    title: 'Open Now',
-    desc: "Only shows places that'll be open for at least another hour. No rushing to beat a closing kitchen.",
-    arrow: 'up',
-  },
-  {
-    ref: 'hiddenGemsRow',
-    title: 'Skip the Chains',
-    desc: 'We filter out chains two ways: a list of known chain names, and any place with 500+ reviews (a good sign it\u2019s a big operation). What\u2019s left are more likely to be local spots with smaller audiences.',
-    arrow: 'up',
-  },
-  {
-    ref: 'spotsRow',
-    title: '+ Spots & Your Lists',
-    desc: "Add your own spots \u2014 Mom's house, that taco truck, anywhere. Save favorites \u2764\uFE0F and block \uD83D\uDEAB specific locations or entire restaurant names so they never come up.",
-    arrow: 'up',
-  },
-  {
-    ref: 'forkAroundBtn',
-    title: 'Fork Around. Find Out.',
-    desc: 'Indecisive group? Start a session, share a code, and everyone sets their own filters. We\u2019ll pick from the Venn diagram of what works for all of you.',
-    arrow: 'up',
-  },
-  {
-    ref: 'infoBtn',
-    title: 'Info & Support',
-    desc: "Tap \u2139\uFE0F anytime for details on how everything works, take this tour again, or support ForkIt!'s development.",
-    arrow: 'up',
-  },
-  {
-    ref: null,
-    title: 'Why not all free?',
-    desc: "Google Maps promotes places with ad budgets \u2014 which crowds out the best jamaican food made in the back of a gas station you've ever tasted. We bypass that by pulling raw data from Google's API, and Google charges for those calls. Your 20 free searches/month and 1 Fork Around are on us. Pro ($1.99/month) removes all limits. Re-rolls within 4 hours are always free \u2014 only filter changes or an expired pool count as a new search.",
-    arrow: null,
-  },
-];
-
-// Fork Around
-const GROUP_MODAL_CLOSE_DELAY = 300;
-const GROUP_POLL_INTERVAL = 2000;
-const GROUP_SESSION_EXPIRED_STATUS = 404;
-const MAX_SAVED_LOCATIONS = 10;
-
-// Theme colors - "Fork it" energy (Orange + Teal + Cream)
-const THEME = {
-  // Core palette
-  accent: '#FB923C', // Bright orange - primary accent
-  accentLight: '#FDBA74', // Lighter orange for gradients
-  accentDark: '#EA580C', // Deeper orange for contrast
-  pop: '#2DD4BF', // Punchy teal - secondary pop color
-  success: '#2DD4BF', // Teal for success states
-  cream: '#FEF3E2', // Warm cream for highlights
-  muted: '#A1A1AA', // Zinc for muted elements
-  white: '#FFFFFF',
-  dark: '#0D0D0D', // Near-black background
-  black: '#000000',
-  background: ['#0D0D0D', '#1A1410', '#0D0D0D'], // Warm dark gradient
-
-  // Alpha variants (reusable throughout UI)
-  textPrimary: 'rgba(255,255,255,0.92)',
-  textSecondary: 'rgba(255,255,255,0.75)',
-  textMuted: 'rgba(255,255,255,0.55)',
-  textFaint: 'rgba(255,255,255,0.45)',
-  textHint: 'rgba(255,255,255,0.35)',
-  textSubtle: 'rgba(255,255,255,0.7)',
-  textBright: 'rgba(255,255,255,0.9)',
-  textBold: 'rgba(255,255,255,0.88)',
-  textIcon: 'rgba(255,255,255,0.6)',
-  borderLight: 'rgba(255,255,255,0.18)',
-  borderFaint: 'rgba(255,255,255,0.14)',
-  borderSubtle: 'rgba(255,255,255,0.12)',
-  borderDim: 'rgba(255,255,255,0.08)',
-  surfaceLight: 'rgba(255,255,255,0.06)',
-  surfaceHover: 'rgba(255,255,255,0.08)',
-  surfaceInput: 'rgba(0,0,0,0.20)',
-  overlay: 'rgba(0,0,0,0.75)',
-  toastBg: 'rgba(0,0,0,0.40)',
-
-  // Accent alpha variants
-  accentBg: 'rgba(251,146,60,0.15)',
-  accentBgLight: 'rgba(251,146,60,0.1)',
-  accentBorder: 'rgba(251,146,60,0.3)',
-  accentBorderLight: 'rgba(251,146,60,0.25)',
-  accentChip: 'rgba(251,146,60,0.9)',
-  accentToastBorder: 'rgba(251,146,60,0.5)',
-  accentToastBorderLight: 'rgba(251,146,60,0.4)',
-  popBg: 'rgba(45,212,191,0.06)',
-  popBgMedium: 'rgba(45,212,191,0.15)',
-  popBorder: 'rgba(45,212,191,0.25)',
-  popBorderMedium: 'rgba(45,212,191,0.3)',
-  popFaint: 'rgba(45,212,191,0.7)',
-  popThumb: 'rgba(45,212,191,0.5)',
-
-  // Brand colors (support modals)
-  venmo: '#008CFF',
-  cashApp: '#00D632',
-  kofi: '#FF5E5B',
-  error: '#FF5E5B',
-
-  // Disabled states
-  disabledGradientStart: 'rgba(255,255,255,0.26)',
-  disabledGradientEnd: 'rgba(255,255,255,0.18)',
-
-  // StyleSheet-only color tokens (no-color-literals)
-  textNearWhite: 'rgba(255,255,255,0.86)',
-  textAlmostWhite: 'rgba(255,255,255,0.95)',
-  textDimmed: 'rgba(255,255,255,0.40)',
-  textHalf: 'rgba(255,255,255,0.50)',
-  borderMedium: 'rgba(255,255,255,0.16)',
-  borderThin: 'rgba(255,255,255,0.10)',
-  borderHover: 'rgba(255,255,255,0.20)',
-  surfaceClearBtn: 'rgba(255,255,255,0.10)',
-  surfaceCard: 'rgba(13,13,13,0.85)',
-  surfaceModal: 'rgba(26,20,16,0.95)',
-  surfaceDropdown: 'rgba(26,20,16,0.98)',
-  surfaceFavAction: 'rgba(255,255,255,0.04)',
-  transparent: 'transparent',
-
-  // Tour colors
-  tourOverlay: 'rgba(0,0,0,0.75)',
-  tourSpotBorder: 'rgba(255,215,0,0.6)',
-  tourSpotBg: 'rgba(255,215,0,0.06)',
-  tourCard: '#1C1C2E',
-  tourCardBorder: '#2a2a3e',
-  tourGold: '#FFD700',
-  tourText: '#aaaaaa',
-  tourDotBg: '#333333',
-  tourBtnBg: '#FFD700',
-  tourBtnText: '#0B0B0F',
-  tourSkipText: '#666666',
-  tourLaunchBg: 'rgba(45,212,191,0.1)',
-  tourLaunchBorder: 'rgba(45,212,191,0.3)',
-  tourMockYoutube: 'rgba(255,0,0,0.15)',
-  tourMockGoogle: 'rgba(66,133,244,0.15)',
-  tourMockAllrecipes: 'rgba(255,165,0,0.15)',
-};
-
-const FORKING_LINES = [
-  'Picking for you…',
-  'One sec…',
-  'Finding food…',
-  'Consulting the vibes…',
-  'Rolling the dinner dice…',
-  'Cross-referencing cravings…',
-  'Selecting your destiny…',
-  'Spearing the perfect spot…',
-  'Pronging through possibilities…',
-  'Overthinking is over…',
-  'Almost there…',
-];
-
-const SUCCESS_LINES = [
-  'There. Done. Go eat.',
-  'Picked. Now go.',
-  "That's the one.",
-  'Decision made.',
-  'Done. Stop scrolling. Go.',
-  'No more debates. Just go.',
-];
-
-const FAIL_LINES = [
-  'Nothing? Lower your standards.',
-  'Zero results. Widen the radius.',
-  'Your filters said no to everything.',
-  'Too picky. Loosen up.',
-];
-
-const HIDDEN_GEMS_MAX_REVIEWS = 500;
-
-const CHAIN_KEYWORDS = [
-  'mcdonald',
-  'burger king',
-  'wendy',
-  'taco bell',
-  'kfc',
-  'popeyes',
-  'chick-fil-a',
-  'chickfila',
-  'subway',
-  'domino',
-  'pizza hut',
-  'papa john',
-  'starbucks',
-  'dunkin',
-  'panera',
-  'chipotle',
-  'five guys',
-  'applebee',
-  'chili',
-  'olive garden',
-  'outback',
-  'buffalo wild wings',
-  'arbys',
-  'sonic',
-  'hardee',
-  "carl's jr",
-  'jersey mike',
-  'jimmy john',
-  'qdoba',
-  'whataburger',
-];
-
-const SIGNATURE_DISH_RULES = [
-  { match: ['mcdonald'], dish: 'Big Mac' },
-  { match: ['chick-fil-a', 'chickfila'], dish: 'Chick-fil-A Chicken Sandwich' },
-  { match: ['taco bell'], dish: 'Crunchwrap Supreme' },
-  { match: ['chipotle'], dish: 'Chicken Burrito Bowl' },
-  { match: ['wendy'], dish: 'Baconator' },
-  { match: ['popeyes'], dish: 'Spicy Chicken Sandwich' },
-  { match: ['kfc'], dish: 'Original Recipe Fried Chicken' },
-  { match: ['starbucks'], dish: 'Caramel Macchiato' },
-];
-
-// ==============================
-// HELPERS
-// ==============================
-
-function safeStore(key, data) {
-  AsyncStorage.setItem(key, JSON.stringify(data)).catch(() => {});
-}
-
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function normalize(s) {
-  return (s || '').toLowerCase().trim();
-}
-
-function looksLikeChain(name, userRatingsTotal) {
-  const n = normalize(name);
-  const nameMatch = CHAIN_KEYWORDS.some((k) => n.includes(k));
-  const highReviewCount = (userRatingsTotal || 0) >= HIDDEN_GEMS_MAX_REVIEWS;
-  return nameMatch || highReviewCount;
-}
-
-function pickRandom(arr) {
-  if (!arr?.length) return null;
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function dollars(priceLevel) {
-  if (!priceLevel || priceLevel < 1) return 'Price —';
-  return '$'.repeat(priceLevel);
-}
-
-function getSignatureDish(restaurantName) {
-  const n = normalize(restaurantName);
-  for (const rule of SIGNATURE_DISH_RULES) {
-    if (rule.match.some((m) => n.includes(normalize(m)))) return rule.dish;
-  }
-  return 'Signature dish';
-}
-
-function buildRecipeLinks(restaurantName, dishName) {
-  // If dishName is empty (unknown signature dish), just search restaurant name
-  const searchTerm = dishName ? `${restaurantName} ${dishName}` : restaurantName;
-  const q = encodeURIComponent(`${searchTerm} copycat recipe`);
-  const qDish = encodeURIComponent(`${dishName || restaurantName} copycat recipe`);
-  return [
-    {
-      label: 'YouTube',
-      icon: 'logo-youtube',
-      url: `https://www.youtube.com/results?search_query=${q}`,
-    },
-    { label: 'Google', icon: 'search', url: `https://www.google.com/search?q=${q}` },
-    { label: 'Allrecipes', icon: 'book', url: `https://www.allrecipes.com/search?q=${qDish}` },
-  ];
-}
-
-function migrateFavorite(fav) {
-  if (fav.schemaVersion === 2) return fav;
-  return {
-    ...fav,
-    userNotes: fav.userNotes || '',
-    userDishes: fav.userDishes || '',
-    userRating: fav.userRating ?? null,
-    visitCount: fav.visitCount || 0,
-    lastVisitedAt: fav.lastVisitedAt ?? null,
-    updatedAt: fav.updatedAt || fav.savedAt || Date.now(),
-    schemaVersion: 2,
-  };
-}
-
-function toggleFavorite(place, currentFavorites, setFavs) {
-  const exists = currentFavorites.some((f) => f.place_id === place.place_id);
-  let updated;
-  if (exists) {
-    updated = currentFavorites.filter((f) => f.place_id !== place.place_id);
-  } else {
-    const now = Date.now();
-    updated = [
-      {
-        place_id: place.place_id,
-        name: place.name,
-        vicinity: place.vicinity || '',
-        rating: place.rating || null,
-        price_level: place.price_level || null,
-        savedAt: now,
-        userNotes: '',
-        userDishes: '',
-        userRating: null,
-        visitCount: 0,
-        lastVisitedAt: null,
-        updatedAt: now,
-        schemaVersion: 2,
-      },
-      ...currentFavorites,
-    ];
-  }
-  setFavs(updated);
-  safeStore(STORAGE_KEYS.FAVORITES, updated);
-  return !exists;
-}
-
-function updateFavorite(placeId, changes, currentFavorites, setFavs) {
-  const updated = currentFavorites.map((fav) => {
-    if (fav.place_id !== placeId) return fav;
-    return { ...fav, ...changes, updatedAt: Date.now() };
-  });
-  setFavs(updated);
-  safeStore(STORAGE_KEYS.FAVORITES, updated);
-}
-
-function blockPlace(place, { currentBlocked, setBlocked, currentFavorites, setFavs, byName }) {
-  if (!byName && currentBlocked.some((b) => b.place_id === place.place_id)) return;
-  const entry = {
-    place_id: place.place_id,
-    name: place.name,
-    blockedAt: Date.now(),
-    byName: byName || false,
-  };
-  const updated = [entry, ...currentBlocked];
-  setBlocked(updated);
-  safeStore(STORAGE_KEYS.BLOCKED, updated);
-  // Also remove matching favorites
-  const matchFav = byName
-    ? (f) => normalize(f.name) === normalize(place.name)
-    : (f) => f.place_id === place.place_id;
-  if (currentFavorites?.some(matchFav)) {
-    const updatedFavs = currentFavorites.filter((f) => !matchFav(f));
-    setFavs(updatedFavs);
-    safeStore(STORAGE_KEYS.FAVORITES, updatedFavs);
-  }
-}
-
-function isBlocked(placeId, name, blockedList) {
-  return blockedList.some(
-    (b) => b.place_id === placeId || (b.byName && normalize(b.name) === normalize(name)),
-  );
-}
-
-function unblockPlace(placeId, currentBlocked, setBlocked) {
-  const updated = currentBlocked.filter((b) => b.place_id !== placeId);
-  setBlocked(updated);
-  safeStore(STORAGE_KEYS.BLOCKED, updated);
-}
-
-function addCustomPlace(name, address, { notes, currentCustom, setCustom }) {
-  const trimmed = name.trim();
-  if (!trimmed) return { ok: false };
-  const normalName = normalize(trimmed);
-  const normalAddr = normalize(address.trim());
-  const nameMatch = currentCustom.find((cp) => normalize(cp.name) === normalName);
-  if (nameMatch) {
-    return { ok: false, reason: 'name', dupe: nameMatch.name, dupeAddr: nameMatch.vicinity };
-  }
-  if (normalAddr) {
-    const addrMatch = currentCustom.find(
-      (cp) => cp.vicinity && normalize(cp.vicinity) === normalAddr,
-    );
-    if (addrMatch) {
-      return { ok: false, reason: 'address', dupe: addrMatch.name };
-    }
-  }
-  const newPlace = {
-    place_id: `custom_${Date.now()}`,
-    name: trimmed,
-    vicinity: address.trim() || '',
-    notes: notes.trim() || '',
-    isCustom: true,
-    rating: null,
-    price_level: null,
-    user_ratings_total: 0,
-    createdAt: Date.now(),
-  };
-  const updated = [newPlace, ...currentCustom];
-  setCustom(updated);
-  safeStore(STORAGE_KEYS.CUSTOM_PLACES, updated);
-  return { ok: true };
-}
-
-function removeCustomPlace(placeId, currentCustom, setCustom) {
-  const updated = currentCustom.filter((p) => p.place_id !== placeId);
-  setCustom(updated);
-  safeStore(STORAGE_KEYS.CUSTOM_PLACES, updated);
-}
-
-function openMapsSearchByText(name) {
-  const q = encodeURIComponent(name);
-  const url = `https://www.google.com/maps/search/?api=1&query=${q}`;
-  Linking.openURL(url).catch(() => showAlert('Error', 'Could not open maps.'));
-}
-
-function callPhone(phoneNumber) {
-  if (!phoneNumber) return;
-  Linking.openURL(`tel:${phoneNumber}`).catch(() => showAlert('Error', 'Could not start a call.'));
-}
-
-async function fetchAddressSuggestions(input, coords) {
-  if (!input || input.trim().length < 3) return { suggestions: [], error: null };
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DETAILS_TIMEOUT);
-  try {
-    const body = { input: input.trim() };
-    if (coords?.latitude && coords?.longitude) {
-      body.latitude = coords.latitude;
-      body.longitude = coords.longitude;
-    }
-    const response = await fetch(`${BACKEND_URL}/api/places-autocomplete`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    if (response.status === HTTP_TOO_MANY_REQUESTS) return { suggestions: [], error: 'rate_limit' };
-    if (!response.ok) return { suggestions: [], error: null };
-    const data = await response.json();
-    return { suggestions: data.suggestions || [], error: null };
-  } catch {
-    clearTimeout(timeoutId);
-    return { suggestions: [], error: null };
-  }
-}
-
-async function getPlaceDetails(placeId) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DETAILS_TIMEOUT);
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/places-details`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ placeId }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) return null;
-    const data = await response.json();
-    if (data.status !== 'OK') return null;
-    return data.result;
-  } catch (_) {
-    clearTimeout(timeoutId);
-    return null;
-  }
-}
-
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-// ==============================
-// UI COMPONENTS
-// ==============================
-
-function LocationSearchSection({
-  customLocation,
-  showLocationSearch,
-  locationQuery,
-  locationSuggestions,
-  onQueryChange,
-  onSelectSuggestion,
-  onCancel,
-}) {
-  if (!showLocationSearch && !customLocation) return null;
-  if (customLocation) {
-    return (
-      <View style={styles.customLocationRow}>
-        <View style={styles.customLocationPill}>
-          <Ionicons name="location" size={13} color={THEME.pop} />
-          <Text style={styles.customLocationText} numberOfLines={1}>
-            Searching near {customLocation.label}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-  return (
-    <View style={styles.locationFieldWrap}>
-      <View style={styles.inputWrap}>
-        <Ionicons name="location-outline" size={16} color={THEME.textSubtle} />
-        <TextInput
-          value={locationQuery}
-          onChangeText={onQueryChange}
-          placeholder="Search from a different location"
-          placeholderTextColor={THEME.textFaint}
-          style={styles.input}
-          accessibilityLabel="Search near a different location"
-          keyboardAppearance="dark"
-          returnKeyType="search"
-          autoFocus
-        />
-        <TouchableOpacity
-          onPress={onCancel}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          accessibilityRole="button"
-          accessibilityLabel="Cancel location search"
-        >
-          <Ionicons name="close" size={16} color={THEME.textSubtle} />
-        </TouchableOpacity>
-      </View>
-      {locationSuggestions.length > 0 && (
-        <View style={styles.suggestionsDropdown}>
-          {locationSuggestions.map((s) => (
-            <TouchableOpacity
-              key={s.placeId}
-              style={styles.suggestionItem}
-              onPress={() => onSelectSuggestion(s)}
-              accessibilityRole="button"
-              accessibilityLabel={s.description}
-            >
-              <Ionicons
-                name="location"
-                size={13}
-                color={THEME.accent}
-                style={styles.suggestionIconWrap}
-              />
-              <View style={styles.flex1}>
-                <Text style={styles.suggestionMain}>{s.mainText}</Text>
-                {s.secondaryText ? (
-                  <Text style={styles.suggestionSub}>{s.secondaryText}</Text>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-function Chip({ active, label, icon, onPress }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.85}
-      style={[styles.chip, active ? styles.chipActive : styles.chipIdle]}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={label}
-    >
-      {icon ? (
-        <Ionicons
-          name={icon}
-          size={14}
-          color={active ? THEME.white : THEME.textBright}
-          style={label ? styles.iconMarginRight6 : null}
-        />
-      ) : null}
-      {label ? (
-        <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextIdle]}>
-          {label}
-        </Text>
-      ) : null}
-    </TouchableOpacity>
-  );
-}
-
-function GlassCard({ title, icon, children, accent }) {
-  return (
-    <View style={[styles.cardOuter, accent && styles.cardOuterAccent]}>
-      <View style={[styles.card, accent && styles.cardAccent]}>
-        <View style={styles.cardContent}>
-          <View style={styles.cardHeader}>
-            {icon ? (
-              <Ionicons name={icon} size={18} color={accent ? THEME.accent : THEME.textPrimary} />
-            ) : null}
-            <Text style={styles.cardTitle}>{title}</Text>
-          </View>
-          {children}
-        </View>
-      </View>
-    </View>
-  );
-}
-
-/**
- * Displays a soft Pro nudge or hard paywall based on usage.
- * No countdown — users should feel abundant, not rationed.
- * @param {object} props - Component props
- * @param {string} props.mode - 'solo' or 'group'
- * @param {{solo: number, group: number}} props.usage - current usage counts
- * @param {Function} props.onPaywall - callback to show paywall
- * @returns {JSX.Element|null}
- */
-function UsageHint({ mode, usage, onPaywall }) {
-  if (mode === 'solo') {
-    if (usage.solo >= FREE_SOLO_FORKS) {
-      return (
-        <TouchableOpacity onPress={() => onPaywall('solo')} activeOpacity={0.7}>
-          <Text style={styles.usageHintAccent}>Upgrade to Pro for unlimited searches</Text>
-        </TouchableOpacity>
-      );
-    }
-    if (usage.solo >= FREE_FORKS_NUDGE_THRESHOLD) {
-      return (
-        <TouchableOpacity onPress={() => onPaywall('solo')} activeOpacity={0.7}>
-          <Text style={styles.usageHint}>Enjoying ForkIt? Go Pro for unlimited searches</Text>
-        </TouchableOpacity>
-      );
-    }
-  } else {
-    if (usage.group >= FREE_GROUP_FORKS) {
-      return (
-        <TouchableOpacity onPress={() => onPaywall('group')} activeOpacity={0.7}>
-          <Text style={styles.usageHintAccent}>Upgrade to Pro for unlimited group sessions</Text>
-        </TouchableOpacity>
-      );
-    }
-  }
-  return null;
-}
-
-/**
- * Check how many minutes until a restaurant closes based on opening hours.
- * @param {object} openingHours - opening hours with periods array
- * @returns {number|null} minutes until closing, or null if unknown
- */
-function getMinutesUntilClosing(openingHours) {
-  if (!openingHours?.periods?.length) return null;
-  const now = new Date();
-  const currentDay = now.getDay();
-  const currentMinutes = now.getHours() * MINUTES_PER_HOUR + now.getMinutes();
-
-  for (const period of openingHours.periods) {
-    if (!period.close || period.close.day !== currentDay) continue;
-    const closeMinutes = period.close.hour * MINUTES_PER_HOUR + period.close.minute;
-    if (closeMinutes > currentMinutes) return closeMinutes - currentMinutes;
-  }
-
-  const tomorrow = (currentDay + 1) % DAYS_PER_WEEK;
-  for (const period of openingHours.periods) {
-    if (!period.close || period.close.day !== tomorrow) continue;
-    const closeMinutes = period.close.hour * MINUTES_PER_HOUR + period.close.minute;
-    if (closeMinutes < OVERNIGHT_CUTOFF_MIN) {
-      return MINUTES_PER_DAY - currentMinutes + closeMinutes;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Check if a restaurant matches any of the exclude keywords.
- * Matches against restaurant name and Google Places types.
- * @param {object} restaurant - restaurant object with name and types
- * @param {string[]} excludeTerms - lowercase terms to exclude
- * @returns {boolean} true if the restaurant should be excluded
- */
-function matchesExclude(restaurant, excludeTerms) {
-  if (excludeTerms.length === 0) return false;
-  const nameLower = (restaurant.name || '').toLowerCase();
-  const typesJoined = (restaurant.types || []).join(' ').toLowerCase();
-  return excludeTerms.some((term) => nameLower.includes(term) || typesJoined.includes(term));
-}
-
-/**
- * Get the closing-soon toast message, or null if not closing soon.
- * @param {number|null} closingMins - minutes until closing
- * @param {string} travelMode - 'walk' or 'drive'
- * @param {number} radiusMiles - current radius
- * @returns {string|null} hurry message or null
- */
-function getClosingSoonToast(closingMins, travelMode, radiusMiles) {
-  if (closingMins === null || closingMins > CLOSING_SOON_WARN_MIN) return null;
-  if (travelMode === 'walk' && radiusMiles <= WALK_CLOSE_RADIUS) return 'Get walking!';
-  if (travelMode === 'walk') return 'Better hurry!';
-  return 'Drive safely!';
-}
-
-/**
- * Build the close-group-modal confirmation config, or null if no confirmation needed.
- * @param {string} groupStep - current group step
- * @param {boolean} isHost - whether the user is the host
- * @returns {object|null} { title, message, confirmText } or null
- */
-function getCloseModalConfig(groupStep, isHost) {
-  const inSession = groupStep === 'hosting' || groupStep === 'waiting';
-  if (!inSession) return null;
-  return {
-    title: isHost ? 'End Session?' : 'Leave Session?',
-    message: isHost
-      ? 'Closing will end the session for everyone.'
-      : 'You can rejoin with the same code if the session is still active.',
-    confirmText: isHost ? 'End Session' : 'Leave',
-  };
-}
-
-/**
- * Parse raw AsyncStorage values into typed state. Returns only fields that had data.
- * @param {Array} raw - array of [favData, blockData, customData, travelData, fetchCountData, savedLocsData, usageData]
- * @returns {object} parsed state fields
- */
-function parseStoredState(raw) {
-  const [favData, blockData, customData, travelData, fetchCountData, savedLocsData, usageData] =
-    raw;
-  const state = {};
-  if (favData) state.favorites = JSON.parse(favData).map(migrateFavorite);
-  if (blockData) state.blockedIds = JSON.parse(blockData);
-  if (customData) state.customPlaces = JSON.parse(customData);
-  if (travelData === 'walk' || travelData === 'drive') state.travelMode = travelData;
-  if (fetchCountData) state.fetchCount = parseInt(fetchCountData, 10) || 0;
-  if (savedLocsData) state.savedLocations = JSON.parse(savedLocsData);
-  if (usageData) {
-    const parsed = JSON.parse(usageData);
-    const now = new Date();
-    if (parsed.month === now.getMonth() && parsed.year === now.getFullYear()) {
-      state.forkUsage = parsed;
-    }
-  }
-  return state;
-}
-
-// Travel/fork mode toggle pills and quick-action buttons.
-function FeaturePills({
-  travelMode,
-  onToggleTravel,
-  forkMode,
-  onToggleFork,
-  favorites,
-  blockedIds,
-  onShowFavorites,
-  onShowBlocked,
-  onShowCustomPlaces,
-  tourRefsExt,
-}) {
-  const isWalk = travelMode === 'walk';
-  const isGroup = forkMode === 'group';
-  return (
-    <View style={styles.featurePills}>
-      <TouchableOpacity
-        ref={tourRefsExt?.modeToggle}
-        onPress={onToggleTravel}
-        style={[
-          styles.footerActionBtn,
-          { backgroundColor: isWalk ? THEME.popBgMedium : THEME.surfaceHover },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={`Switch to ${isWalk ? 'drive' : 'walk'} mode`}
-      >
-        <Ionicons
-          name={isWalk ? 'walk' : 'car'}
-          size={14}
-          color={isWalk ? THEME.pop : THEME.textSubtle}
-        />
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={onToggleFork}
-        style={[
-          styles.footerActionBtn,
-          { backgroundColor: isGroup ? THEME.popBgMedium : THEME.surfaceHover },
-        ]}
-        accessibilityRole="button"
-        accessibilityLabel={`Switch to ${isGroup ? 'solo' : 'group'} mode`}
-      >
-        <Ionicons
-          name={isGroup ? 'people' : 'person'}
-          size={14}
-          color={isGroup ? THEME.pop : THEME.textSubtle}
-        />
-      </TouchableOpacity>
-      {favorites.length > 0 && (
-        <TouchableOpacity
-          onPress={onShowFavorites}
-          style={styles.footerActionBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`View ${favorites.length} favorites`}
-        >
-          <Ionicons name="heart" size={14} color={THEME.accent} />
-          <Text style={styles.footerActionText}>{favorites.length}</Text>
-        </TouchableOpacity>
-      )}
-      {blockedIds.length > 0 && (
-        <TouchableOpacity
-          onPress={onShowBlocked}
-          style={styles.footerActionBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`View ${blockedIds.length} blocked restaurants`}
-        >
-          <Ionicons name="ban" size={14} color={THEME.muted} />
-          <Text style={styles.footerActionText}>{blockedIds.length}</Text>
-        </TouchableOpacity>
-      )}
-      <TouchableOpacity
-        onPress={onShowCustomPlaces}
-        style={styles.footerActionBtn}
-        accessibilityRole="button"
-        accessibilityLabel="Manage your spots"
-      >
-        <Ionicons name="add-circle" size={14} color={THEME.pop} />
-        <Text style={styles.footerActionText}>Spots</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-function PrimaryButton({ label, icon, onPress, disabled, loading, spinDeg, bounceY }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={disabled}
-      activeOpacity={0.9}
-      accessibilityRole="button"
-      accessibilityLabel={loading ? 'Finding a restaurant' : label}
-      accessibilityState={{ disabled, busy: loading }}
-    >
-      <LinearGradient
-        colors={
-          disabled
-            ? [THEME.disabledGradientStart, THEME.disabledGradientEnd]
-            : [THEME.accent, THEME.accentDark]
-        }
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.primaryBtn, disabled ? styles.opacity07 : null]}
-      >
-        <Animated.View
-          style={[
-            { transform: [{ rotate: spinDeg }, { translateY: bounceY }] },
-            styles.animatedForkWrap,
-          ]}
-        >
-          <Ionicons name={icon || 'restaurant'} size={18} color={THEME.white} />
-        </Animated.View>
-
-        <Text style={styles.primaryText}>{label}</Text>
-        {loading ? <ActivityIndicator color={THEME.white} style={styles.iconMarginLeft10} /> : null}
-      </LinearGradient>
-    </TouchableOpacity>
-  );
-}
-
-function GhostButton({ label, icon, onPress, disabled }) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={disabled}
-      activeOpacity={0.85}
-      style={[styles.ghostBtn, disabled ? styles.opacity05 : null]}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-    >
-      {icon ? (
-        <Ionicons name={icon} size={16} color={THEME.pop} style={styles.iconMarginRight8} />
-      ) : null}
-      <Text style={[styles.ghostText, { color: THEME.pop }]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function Toast({ text, kind }) {
-  if (!text) return null;
-  // Skip success toasts entirely
-  if (kind === 'success') return null;
-  const icon = kind === 'warn' ? 'alert-circle' : 'information-circle';
-  const iconColor = THEME.accent;
-  const borderColor = kind === 'warn' ? THEME.accentToastBorder : THEME.accentToastBorderLight;
-  return (
-    <View style={styles.toastWrap} accessibilityLiveRegion="polite" accessibilityRole="alert">
-      <View style={[styles.toast, { borderColor }]}>
-        <Ionicons name={icon} size={16} color={iconColor} importantForAccessibility="no" />
-        <Text style={styles.toastText}>{text}</Text>
-      </View>
-    </View>
-  );
-}
-
-// ==============================
-// GROUP FORK MODAL
-// ==============================
-
-/**
- * Renders a single row in the participant list.
- * @param {object} props - Component props
- * @param {{ name: string, isHost: boolean, ready: boolean }} props.participant - Participant data
- * @returns {JSX.Element} The rendered participant row
- */
-function GroupParticipantRow({ participant }) {
-  const { name, isHost, ready } = participant;
-  return (
-    <View key={name} style={styles.groupParticipantRow}>
-      <Ionicons
-        name={isHost ? 'star' : 'person'}
-        size={14}
-        color={ready ? THEME.pop : THEME.textHint}
-      />
-      <Text style={styles.groupParticipantName}>{name}</Text>
-      <Text style={[styles.groupParticipantStatus, { color: ready ? THEME.pop : THEME.textHint }]}>
-        {ready ? 'Ready' : 'Setting filters…'}
-      </Text>
-    </View>
-  );
-}
-
-/**
- * Modal for Fork Around sessions — create, join, wait, and view results.
- * @param {object} props - Component props
- * @param {boolean} props.visible - Whether the modal is visible
- * @param {Function} props.onClose - Callback to close the modal
- * @param {string} props.groupStep - Current step: 'menu' | 'hosting' | 'waiting' | 'result'
- * @param {string} props.groupCode - The 4-letter session code
- * @param {string} props.groupName - User's display name
- * @param {Function} props.setGroupName - Setter for groupName
- * @param {string} props.groupJoinCode - Code entered to join a session
- * @param {Function} props.setGroupJoinCode - Setter for groupJoinCode
- * @param {string} props.groupLocationName - Host's location name
- * @param {Function} props.setGroupLocationName - Setter for groupLocationName
- * @param {string} props.groupHostName - Host's display name (for joiners)
- * @param {number|null} props.groupHostRadius - Host's selected radius (for joiners)
- * @param {Array} props.savedLocations - User's saved locations
- * @param {Function} props.saveLocation - Save a new location
- * @param {Function} props.deleteSavedLocation - Delete a saved location
- * @param {Array} props.customPlaces - User's Your Spots list
- * @param {Function} props.setCustomPlaces - Setter for customPlaces
- * @param {Array} props.groupParticipants - List of participants
- * @param {object|null} props.groupResult - Picked restaurant result
- * @param {boolean} props.groupLoading - Whether a group action is in progress
- * @param {string} props.groupError - Error message to display
- * @param {boolean} props.groupFiltersSubmitted - Whether filters are locked in
- * @param {Function} props.groupCreate - Create a new session
- * @param {Function} props.groupJoin - Join an existing session
- * @param {Function} props.groupSubmitFilters - Submit/lock filters
- * @param {Function} props.groupTriggerPick - Trigger the group pick
- * @param {Function} props.groupLeave - Leave or end the session
- * @returns {JSX.Element} The rendered Fork Around modal
- */
-function GroupForkModal({
-  visible,
-  onClose,
-  groupStep,
-  groupCode,
-  groupName,
-  setGroupName,
-  groupJoinCode,
-  setGroupJoinCode,
-  groupLocationName,
-  setGroupLocationName,
-  groupHostName,
-  groupHostRadius,
-  savedLocations,
-  saveLocation,
-  deleteSavedLocation: _deleteSavedLocation,
-  customPlaces,
-  setCustomPlaces,
-  groupParticipants,
-  groupResult,
-  groupLoading,
-  groupError,
-  groupFiltersSubmitted,
-  groupCreate,
-  groupJoin,
-  groupSubmitFilters,
-  groupTriggerPick,
-  groupLeave,
-}) {
-  const [gRadius, setGRadius] = useState(3);
-  const [gMaxPrice, setGMaxPrice] = useState(2);
-  const [gMinRating, setGMinRating] = useState(RATING_DEFAULT);
-  const [gKeyword, setGKeyword] = useState('');
-  const [gExcludeKeyword, setGExcludeKeyword] = useState('');
-  const [gGroupSize, setGGroupSize] = useState('2-4');
-  const [gLocQuery, setGLocQuery] = useState('');
-  const [gLocSuggestions, setGLocSuggestions] = useState([]);
-  const [gLocCoords, setGLocCoords] = useState(null); // { latitude, longitude, label }
-  const gLocDebounceRef = useRef(null);
-
-  const radiusOptions = [1, 3, 5, 10];
-  const priceOptions = [1, 2, 3, 4];
-  const ratingOptions = [RATING_LOW, RATING_DEFAULT, RATING_HIGH, RATING_TOP];
-  const groupSizeOptions = ['2-4', '5-8', '8+'];
-  /**
-   * Returns a price label for the given level.
-   * @param {number} level - Price level 1-4
-   * @returns {string} Price label string
-   */
-  function priceLabel(level) {
-    if (level === 1) return '$';
-    if (level === 2) return '$$';
-    if (level === 3) return '$$$';
-    if (level === 4) return '$$$$';
-    return '';
-  }
-
-  /**
-   * Handle location search input with debounced autocomplete.
-   * Checks saved locations first, then falls back to API search.
-   * @param {string} text - search input
-   * @returns {void}
-   */
-  function handleLocQueryChange(text) {
-    setGLocQuery(text);
-    setGLocSuggestions([]);
-    if (gLocDebounceRef.current) clearTimeout(gLocDebounceRef.current);
-    if (text.trim().length >= 1) {
-      // Check saved locations + Your Spots immediately (no debounce)
-      const q = text.trim().toLowerCase();
-      const savedMatches = savedLocations
-        .filter((s) => s.label.toLowerCase().includes(q))
-        .map((s) => ({ ...s, isSaved: true, description: s.label, mainText: s.label }));
-      const spotMatches = customPlaces
-        .filter(
-          (cp) =>
-            cp.name.toLowerCase().includes(q) &&
-            !savedMatches.some((sm) => sm.label.toLowerCase() === cp.name.toLowerCase()),
-        )
-        .map((cp) => ({
-          ...cp,
-          isCustomSpot: true,
-          description: cp.vicinity ? `${cp.name} — ${cp.vicinity}` : cp.name,
-          mainText: cp.name,
-        }));
-      const localMatches = [...savedMatches, ...spotMatches];
-      if (localMatches.length > 0) {
-        setGLocSuggestions(localMatches);
-      }
-    }
-    if (text.trim().length >= 3) {
-      gLocDebounceRef.current = setTimeout(async () => {
-        const { suggestions } = await fetchAddressSuggestions(text, null);
-        // Merge: saved locations + Your Spots first, then API results
-        const q = text.trim().toLowerCase();
-        const savedMatches = savedLocations
-          .filter((s) => s.label.toLowerCase().includes(q))
-          .map((s) => ({ ...s, isSaved: true, description: s.label, mainText: s.label }));
-        const spotMatches = customPlaces
-          .filter(
-            (cp) =>
-              cp.name.toLowerCase().includes(q) &&
-              !savedMatches.some((sm) => sm.label.toLowerCase() === cp.name.toLowerCase()),
-          )
-          .map((cp) => ({
-            ...cp,
-            isCustomSpot: true,
-            description: cp.vicinity ? `${cp.name} — ${cp.vicinity}` : cp.name,
-            mainText: cp.name,
-          }));
-        setGLocSuggestions([...savedMatches, ...spotMatches, ...suggestions]);
-      }, DEBOUNCE_DELAY);
-    }
-  }
-
-  /**
-   * Select a location from autocomplete suggestions.
-   * @param {object} suggestion - autocomplete suggestion (or saved location)
-   * @returns {Promise<void>}
-   */
-  async function selectGroupLocation(suggestion) {
-    setGLocSuggestions([]);
-    if (suggestion.isSaved) {
-      setGLocQuery(suggestion.label);
-      setGLocCoords({
-        latitude: suggestion.latitude,
-        longitude: suggestion.longitude,
-        label: suggestion.label,
-      });
-      setGroupLocationName(suggestion.label);
-      return;
-    }
-    if (suggestion.isCustomSpot) {
-      setGLocQuery(suggestion.name);
-      setGroupLocationName(suggestion.name);
-      if (suggestion.vicinity) {
-        const { suggestions: addrResults } = await fetchAddressSuggestions(
-          suggestion.vicinity,
-          null,
-        );
-        if (addrResults.length > 0) {
-          const details = await getPlaceDetails(addrResults[0].placeId);
-          if (details?.geometry?.location) {
-            setGLocCoords({
-              latitude: details.geometry.location.lat,
-              longitude: details.geometry.location.lng,
-              label: suggestion.name,
-            });
-            return;
-          }
-        }
-      }
-      showAlert(
-        'No Address',
-        'This spot doesn\u2019t have an address. Search for one to set the location.',
-      );
-      return;
-    }
-    setGLocQuery(suggestion.description);
-    const details = await getPlaceDetails(suggestion.placeId);
-    if (details?.geometry?.location) {
-      setGLocCoords({
-        latitude: details.geometry.location.lat,
-        longitude: details.geometry.location.lng,
-        label: suggestion.mainText || suggestion.description,
-      });
-      if (!groupLocationName) {
-        setGroupLocationName(suggestion.mainText || suggestion.description);
-      }
-    }
-  }
-
-  /** Submits the local filter state to the group session. @returns {void} */
-  function handleSubmitFilters() {
-    groupSubmitFilters({
-      radiusMiles: gRadius,
-      maxPrice: gMaxPrice,
-      minRating: gMinRating,
-      openNow: true,
-      hiddenGems: false,
-      cuisineKeyword: gKeyword,
-      excludeKeyword: gExcludeKeyword,
-      groupSize: gGroupSize,
-    });
-  }
-
-  const filterSummary = `\u2713 ${gRadius} mi \u00B7 ${priceLabel(gMaxPrice)} \u00B7 ${gMinRating.toFixed(1)}+ \u00B7 Group of ${gGroupSize}`;
-
-  /**
-   * Renders inline filter controls for group sessions.
-   * @returns {JSX.Element} Filter controls
-   */
-  function renderGroupFilters() {
-    return (
-      <View style={styles.groupFiltersWrap}>
-        <Text style={styles.groupFilterLabel}>How far?</Text>
-        <View style={styles.groupPillRow}>
-          {radiusOptions.map((r) => (
-            <TouchableOpacity
-              key={r}
-              style={[styles.groupPill, gRadius === r && styles.groupPillActive]}
-              onPress={() => setGRadius(r)}
-              accessibilityRole="button"
-              accessibilityLabel={`${r} mile radius`}
-            >
-              <Text style={[styles.groupPillText, gRadius === r && styles.groupPillTextActive]}>
-                {r} mi
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={styles.groupFilterLabel}>Max price?</Text>
-        <View style={styles.groupPillRow}>
-          {priceOptions.map((p) => (
-            <TouchableOpacity
-              key={p}
-              style={[styles.groupPill, gMaxPrice === p && styles.groupPillActive]}
-              onPress={() => setGMaxPrice(p)}
-              accessibilityRole="button"
-              accessibilityLabel={`Max price ${priceLabel(p)}`}
-            >
-              <Text style={[styles.groupPillText, gMaxPrice === p && styles.groupPillTextActive]}>
-                {priceLabel(p)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={styles.groupFilterLabel}>Min rating?</Text>
-        <View style={styles.groupPillRow}>
-          {ratingOptions.map((r) => (
-            <TouchableOpacity
-              key={r}
-              style={[styles.groupPill, gMinRating === r && styles.groupPillActive]}
-              onPress={() => setGMinRating(r)}
-              accessibilityRole="button"
-              accessibilityLabel={`Minimum rating ${r} stars`}
-            >
-              <Text style={[styles.groupPillText, gMinRating === r && styles.groupPillTextActive]}>
-                {r.toFixed(1)}+
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={styles.groupFilterLabel}>Group size</Text>
-        <View style={styles.groupPillRow}>
-          {groupSizeOptions.map((s) => (
-            <TouchableOpacity
-              key={s}
-              style={[styles.groupPill, gGroupSize === s && styles.groupPillActive]}
-              onPress={() => setGGroupSize(s)}
-              accessibilityRole="button"
-              accessibilityLabel={`Group size ${s}`}
-            >
-              <Text style={[styles.groupPillText, gGroupSize === s && styles.groupPillTextActive]}>
-                {s}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={styles.groupFilterLabel}>Cuisine</Text>
-        <TextInput
-          style={styles.groupInput}
-          placeholder="e.g. sushi, tacos, brunch..."
-          placeholderTextColor={THEME.textHint}
-          value={gKeyword}
-          onChangeText={setGKeyword}
-          maxLength={40}
-          accessibilityLabel="Cuisine keyword filter"
-        />
-
-        <Text style={styles.groupFilterLabel}>Not in the mood for</Text>
-        <TextInput
-          style={styles.groupInput}
-          placeholder="e.g. pizza, indian..."
-          placeholderTextColor={THEME.textHint}
-          value={gExcludeKeyword}
-          onChangeText={setGExcludeKeyword}
-          maxLength={100}
-          accessibilityLabel="Exclude cuisine filter"
-        />
-      </View>
-    );
-  }
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
-      <View style={styles.infoOverlay} accessibilityViewIsModal>
-        <TouchableOpacity
-          style={StyleSheet.absoluteFill}
-          activeOpacity={1}
-          onPress={onClose}
-          accessibilityLabel="Close fork around"
-          accessibilityRole="button"
-        />
-        <View style={styles.infoCard} accessibilityRole="none">
-          <TouchableOpacity
-            style={styles.infoClose}
-            onPress={onClose}
-            accessibilityLabel="Close"
-            accessibilityRole="button"
-          >
-            <Ionicons name="close" size={22} color={THEME.textIcon} />
-          </TouchableOpacity>
-
-          {groupStep === 'menu' && (
-            <View>
-              <View style={styles.groupHeaderRow}>
-                <Text
-                  style={[
-                    styles.infoHeading,
-                    styles.supportHeadingCenter,
-                    styles.groupHeaderOrange,
-                  ]}
-                  accessibilityRole="header"
-                >
-                  Fork Around.
-                </Text>
-                <Text
-                  style={[styles.infoHeading, styles.supportHeadingCenter, styles.groupHeaderTeal]}
-                >
-                  Find Out.
-                </Text>
-              </View>
-              <Text style={[styles.infoText, styles.supportSubCenter]}>
-                Pick a restaurant with friends.
-              </Text>
-
-              <TextInput
-                style={styles.groupInput}
-                placeholder="Your name"
-                placeholderTextColor={THEME.textHint}
-                value={groupName}
-                onChangeText={setGroupName}
-                maxLength={20}
-                autoCapitalize="words"
-                accessibilityLabel="Your display name"
-              />
-
-              <TextInput
-                style={[styles.groupInput, styles.marginTop8]}
-                placeholder="Search address or type a saved spot name"
-                placeholderTextColor={THEME.textHint}
-                value={gLocQuery}
-                onChangeText={handleLocQueryChange}
-                maxLength={100}
-                autoCapitalize="words"
-                accessibilityLabel="Search for a location to center the group session"
-              />
-              {gLocSuggestions.length > 0 && (
-                <View style={styles.groupLocSuggestions}>
-                  {gLocSuggestions.map((s) => (
-                    <TouchableOpacity
-                      key={
-                        s.isSaved
-                          ? `saved-${s.label}`
-                          : s.isCustomSpot
-                            ? `spot-${s.place_id}`
-                            : s.placeId
-                      }
-                      style={styles.groupLocSuggestionRow}
-                      onPress={() => selectGroupLocation(s)}
-                      accessibilityRole="button"
-                    >
-                      {(s.isSaved || s.isCustomSpot) && (
-                        <Ionicons name="bookmark" size={14} color={THEME.pop} />
-                      )}
-                      <Text style={styles.groupLocSuggestionText} numberOfLines={1}>
-                        {s.isSaved || s.isCustomSpot ? ` ${s.description}` : s.description}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-              {gLocCoords ? (
-                <View>
-                  <View style={styles.groupLocConfirmed}>
-                    <Ionicons name="location" size={14} color={THEME.pop} />
-                    <Text style={styles.groupLocConfirmedText} numberOfLines={1}>
-                      {gLocCoords.label}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setGLocCoords(null);
-                        setGLocQuery('');
-                        setGroupLocationName('');
-                      }}
-                      accessibilityLabel="Clear location"
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="close-circle" size={16} color={THEME.textHint} />
-                    </TouchableOpacity>
-                  </View>
-                  {!savedLocations.some((s) => s.label === gLocCoords.label) &&
-                    !customPlaces.some(
-                      (cp) => cp.name.toLowerCase() === gLocCoords.label.toLowerCase(),
-                    ) && (
-                      <TouchableOpacity
-                        style={styles.groupSaveSpotBtn}
-                        onPress={() => {
-                          addCustomPlace(gLocCoords.label, gLocQuery || gLocCoords.label, {
-                            notes: '',
-                            currentCustom: customPlaces,
-                            setCustom: setCustomPlaces,
-                          });
-                          saveLocation(gLocCoords);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Save this location to Your Spots"
-                      >
-                        <Ionicons name="bookmark-outline" size={14} color={THEME.pop} />
-                        <Text style={styles.groupSaveSpotText}>Save to Your Spots</Text>
-                      </TouchableOpacity>
-                    )}
-                </View>
-              ) : (
-                <Text style={styles.groupHintText}>
-                  {customPlaces.length > 0
-                    ? 'Type a spot name or search an address. Leave blank for GPS.'
-                    : 'Search an address or leave blank to use your GPS.'}
-                </Text>
-              )}
-
-              <TextInput
-                style={[styles.groupInput, styles.marginTop8]}
-                placeholder="Nickname for this spot (e.g. The Office)"
-                placeholderTextColor={THEME.textHint}
-                value={groupLocationName}
-                onChangeText={setGroupLocationName}
-                maxLength={60}
-                autoCapitalize="words"
-                accessibilityLabel="Friendly name for your location"
-              />
-              <Text style={[styles.groupHintText, styles.groupHintTextLast]}>
-                Friends will see this so they know where you{'\u2019'}re searching.
-              </Text>
-
-              <TouchableOpacity
-                style={[
-                  styles.supportBtn,
-                  { backgroundColor: THEME.accent },
-                  styles.groupHostBtnGap,
-                ]}
-                onPress={() => groupCreate(gLocCoords)}
-                disabled={groupLoading}
-                accessibilityRole="button"
-                accessibilityLabel="Host a new group session"
-              >
-                <Ionicons name="add-circle" size={18} color={THEME.white} />
-                <Text style={styles.supportBtnText}>
-                  {groupLoading ? 'Creating\u2026' : 'Host a Session'}
-                </Text>
-              </TouchableOpacity>
-
-              <View style={styles.groupDivider}>
-                <View style={styles.groupDividerLine} />
-                <Text style={styles.groupDividerText}>or</Text>
-                <View style={styles.groupDividerLine} />
-              </View>
-
-              <TextInput
-                style={styles.groupInput}
-                placeholder="Enter 4-letter code"
-                placeholderTextColor={THEME.textHint}
-                value={groupJoinCode}
-                onChangeText={(t) => setGroupJoinCode(t.toUpperCase())}
-                maxLength={4}
-                autoCapitalize="characters"
-                accessibilityLabel="Session code to join"
-              />
-
-              <TouchableOpacity
-                style={[styles.supportBtn, { backgroundColor: THEME.pop }]}
-                onPress={groupJoin}
-                disabled={groupLoading}
-                accessibilityRole="button"
-                accessibilityLabel="Join an existing group session"
-              >
-                <Ionicons name="enter" size={18} color={THEME.white} />
-                <Text style={styles.supportBtnText}>
-                  {groupLoading ? 'Joining\u2026' : 'Join a Session'}
-                </Text>
-              </TouchableOpacity>
-
-              {!!groupError && <Text style={styles.groupError}>{groupError}</Text>}
-            </View>
-          )}
-
-          {groupStep === 'hosting' && (
-            <ScrollView style={styles.groupScrollView} showsVerticalScrollIndicator={false}>
-              <Text
-                style={[styles.infoHeading, styles.supportHeadingCenter]}
-                accessibilityRole="header"
-              >
-                Share This Code
-              </Text>
-              <Text
-                style={styles.groupCodeDisplay}
-                selectable
-                accessibilityLabel={`Session code: ${groupCode.split('').join(' ')}`}
-              >
-                {groupCode}
-              </Text>
-              <TouchableOpacity
-                style={[styles.supportBtn, { backgroundColor: THEME.accent }]}
-                onPress={() => {
-                  const url = `https://forkit-web.vercel.app/group?code=${groupCode}`;
-                  Share.share({
-                    message: `Fork around and find out! Enter code ${groupCode} in the app, or join from your browser: ${url}`,
-                  }).catch(() => {});
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Share session code with friends"
-              >
-                <Ionicons name="share-social" size={18} color={THEME.white} />
-                <Text style={styles.supportBtnText}>Share Code</Text>
-              </TouchableOpacity>
-              {groupLocationName ? (
-                <Text style={styles.groupLocationContext}>Searching near {groupLocationName}</Text>
-              ) : null}
-              <Text style={[styles.infoText, styles.supportSubCenter]}>
-                Friends enter this code to join.{'\n'}Pick when everyone{'\u2019'}s ready.
-              </Text>
-
-              <View style={styles.groupParticipantList}>
-                {groupParticipants.map((p) => (
-                  <GroupParticipantRow key={p.name} participant={p} />
-                ))}
-              </View>
-
-              {!groupFiltersSubmitted ? (
-                <>
-                  {renderGroupFilters()}
-                  <TouchableOpacity
-                    style={[styles.supportBtn, { backgroundColor: THEME.pop }]}
-                    onPress={handleSubmitFilters}
-                    disabled={groupLoading}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="checkmark-circle" size={18} color={THEME.white} />
-                    <Text style={styles.supportBtnText}>
-                      {groupLoading ? 'Submitting\u2026' : 'Lock In My Filters'}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <Text style={styles.groupReadyText}>{filterSummary}</Text>
-              )}
-
-              {(() => {
-                const readyCount = groupParticipants.filter((p) => p.ready).length;
-                const totalCount = groupParticipants.length;
-                const notReady = totalCount - readyCount;
-                if (readyCount < 2) return null;
-                return (
-                  <>
-                    {notReady > 0 && (
-                      <Text style={styles.groupReadyHint}>
-                        {readyCount} of {totalCount} ready — go whenever you want
-                      </Text>
-                    )}
-                    <TouchableOpacity
-                      style={[styles.supportBtn, styles.groupPickBtn]}
-                      onPress={groupTriggerPick}
-                      disabled={groupLoading}
-                      accessibilityRole="button"
-                    >
-                      <Text style={styles.supportBtnText}>
-                        {groupLoading ? 'Picking\u2026' : 'Fork It for Everyone'}
-                      </Text>
-                      {!groupLoading && <ForkIcon size={16} color={THEME.white} />}
-                    </TouchableOpacity>
-                  </>
-                );
-              })()}
-
-              {!!groupError && <Text style={styles.groupError}>{groupError}</Text>}
-
-              <TouchableOpacity
-                onPress={groupLeave}
-                style={styles.groupLeaveBtn}
-                accessibilityRole="button"
-              >
-                <Text style={styles.groupLeaveText}>End Session</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          )}
-
-          {groupStep === 'waiting' && (
-            <ScrollView style={styles.groupScrollView} showsVerticalScrollIndicator={false}>
-              <Text
-                style={[styles.infoHeading, styles.supportHeadingCenter]}
-                accessibilityRole="header"
-              >
-                Joined: {groupCode}
-              </Text>
-              {groupLocationName || groupHostName ? (
-                <Text style={styles.groupLocationContext}>
-                  {groupHostName || 'The host'} is searching near
-                  {groupLocationName ? ` ${groupLocationName}` : ' their location'}
-                  {groupHostRadius ? ` (within ${groupHostRadius} mi)` : ''}.
-                </Text>
-              ) : null}
-              <Text style={[styles.infoText, styles.supportSubCenter]}>
-                Set your filters below, then lock them in.
-              </Text>
-
-              <View style={styles.groupParticipantList}>
-                {groupParticipants.map((p) => (
-                  <GroupParticipantRow key={p.name} participant={p} />
-                ))}
-              </View>
-
-              {!groupFiltersSubmitted ? (
-                <>
-                  {renderGroupFilters()}
-                  <TouchableOpacity
-                    style={[styles.supportBtn, { backgroundColor: THEME.pop }]}
-                    onPress={handleSubmitFilters}
-                    disabled={groupLoading}
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="checkmark-circle" size={18} color={THEME.white} />
-                    <Text style={styles.supportBtnText}>
-                      {groupLoading ? 'Submitting\u2026' : 'Lock In My Filters'}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <Text style={styles.groupReadyText}>
-                  {filterSummary}
-                  {'\n'}Waiting for the host to pick\u2026
-                </Text>
-              )}
-
-              {!!groupError && <Text style={styles.groupError}>{groupError}</Text>}
-
-              <TouchableOpacity
-                onPress={groupLeave}
-                style={styles.groupLeaveBtn}
-                accessibilityRole="button"
-              >
-                <Text style={styles.groupLeaveText}>Leave Session</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          )}
-
-          {groupStep === 'result' && groupResult && (
-            <View>
-              <Text
-                style={[styles.infoHeading, styles.supportHeadingCenter]}
-                accessibilityRole="header"
-              >
-                The Group Has Spoken!
-              </Text>
-              <Text style={styles.groupResultName}>{groupResult.name}</Text>
-              {groupResult.rating && (
-                <Text style={styles.groupResultDetail}>
-                  {'⭐'.repeat(Math.round(groupResult.rating))} {groupResult.rating}
-                </Text>
-              )}
-              {groupResult.vicinity && (
-                <Text style={styles.groupResultDetail}>{groupResult.vicinity}</Text>
-              )}
-              <TouchableOpacity
-                style={[styles.supportBtn, styles.groupDirectionsBtn]}
-                onPress={() => {
-                  const { lat, lng } = groupResult.geometry?.location || {};
-                  if (lat && lng) {
-                    Linking.openURL(
-                      `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
-                    );
-                  }
-                }}
-                accessibilityRole="link"
-              >
-                <Ionicons name="navigate" size={18} color={THEME.white} />
-                <Text style={styles.supportBtnText}>Get Directions</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={onClose}
-                style={[styles.groupLeaveBtn, styles.marginTop16]}
-                accessibilityRole="button"
-              >
-                <Text style={styles.groupLeaveText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
+import { parseStoredState } from './utils/storageParser';
+
+// Cap font scaling so large-font accessibility settings don't break the layout.
+// Users still get ~30% larger text; anything beyond that clips fixed containers.
+const MAX_FONT_SCALE = 1.3;
+if (Text.defaultProps == null) Text.defaultProps = {};
+Text.defaultProps.maxFontSizeMultiplier = MAX_FONT_SCALE;
+if (TextInput.defaultProps == null) TextInput.defaultProps = {};
+TextInput.defaultProps.maxFontSizeMultiplier = MAX_FONT_SCALE;
+
+// Push notification foreground handler
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 // ==============================
 // APP
 // ==============================
 
 /**
- * ForkIt main app component. Random restaurant picker with filters,
- * favorites, blocked list, and custom spots.
- * @returns {JSX.Element} The rendered app
+ * Banner displaying the group fork result with a countdown timer.
+ * @param {object} props
+ * @param {string} props.groupCode - The 4-letter group session code
+ * @param {string} props.resultName - Name of the picked restaurant
+ * @param {number} props.resultTime - Timestamp (ms) when the result was picked
+ * @param {boolean} props.isHost - Whether the current user is the session host
+ * @param {() => void} props.onPress - Handler when the banner is tapped
+ * @returns {JSX.Element}
+ */
+function ResultBanner({ groupCode, resultName, resultTime, isHost, onPress }) {
+  const [minsLeft, setMinsLeft] = useState(() =>
+    resultTime
+      ? Math.max(
+          0,
+          Math.ceil((GROUP_RESULT_EXPIRY_MS - (Date.now() - resultTime)) / GROUP_RESULT_TICK_MS),
+        )
+      : 30,
+  );
+
+  useEffect(() => {
+    if (!resultTime) return;
+    const interval = setInterval(() => {
+      const remaining = Math.max(
+        0,
+        Math.ceil((GROUP_RESULT_EXPIRY_MS - (Date.now() - resultTime)) / GROUP_RESULT_TICK_MS),
+      );
+      setMinsLeft(remaining);
+    }, GROUP_RESULT_TICK_MS);
+    return () => clearInterval(interval);
+  }, [resultTime]);
+
+  return (
+    <TouchableOpacity
+      style={styles.resultCard}
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel="View the group's restaurant pick"
+    >
+      <View style={styles.resultCardHeader}>
+        <Ionicons name="restaurant" size={18} color={THEME.pop} />
+        <Text style={styles.resultCardName} numberOfLines={2}>
+          {resultName}
+        </Text>
+      </View>
+      <Text style={styles.resultCardMeta}>
+        {groupCode} · {isHost ? 'Hosted' : 'Joined'} · Info card expires in {minsLeft} minutes
+      </Text>
+      <View style={styles.resultCardCta}>
+        <Text style={styles.resultCardCtaText}>Let's Forking Go!</Text>
+        <Ionicons name="chevron-forward" size={14} color={THEME.pop} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/**
+ *
  */
 export default function App() {
   // Load Montserrat Bold font
   const [fontsLoaded] = useFonts({
+    Montserrat_500Medium,
+    Montserrat_600SemiBold,
     Montserrat_700Bold,
   });
 
@@ -1901,8 +238,6 @@ export default function App() {
   const [forkingLine, setForkingLine] = useState('');
   const [toast, setToast] = useState({ text: '', kind: 'info' });
   const [showInfo, setShowInfo] = useState(false);
-  const [infoScrollRatio, setInfoScrollRatio] = useState(0);
-  const [infoScrollVisible, setInfoScrollVisible] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   // Favorites, Block list & Custom places
@@ -1910,67 +245,17 @@ export default function App() {
   const [blockedIds, setBlockedIds] = useState([]);
   const [customPlaces, setCustomPlaces] = useState([]);
   const [showFavorites, setShowFavorites] = useState(false);
-  const [expandedFavId, setExpandedFavId] = useState(null);
-  const [editingFavId, setEditingFavId] = useState(null);
-  const [editNotes, setEditNotes] = useState('');
-  const [editDishes, setEditDishes] = useState('');
   const [showBlocked, setShowBlocked] = useState(false);
   const [showCustomPlaces, setShowCustomPlaces] = useState(false);
-  const [showSupport, setShowSupport] = useState(false);
-  const [newCustomName, setNewCustomName] = useState('');
-  const [newCustomAddress, setNewCustomAddress] = useState('');
-  const [newCustomNotes, setNewCustomNotes] = useState('');
-  const [spotsSearch, setSpotsSearch] = useState('');
-  const [spotsMsg, setSpotsMsg] = useState(null);
-  const [addressSuggestions, setAddressSuggestions] = useState([]);
-  const addressDebounceRef = useRef(null);
   const locationDebounceRef = useRef(null);
-  const easterEggTaps = useRef(0);
 
-  // Tour
-  const [showTour, setShowTour] = useState(false);
-  const [tourStep, setTourStep] = useState(0);
-  const [tourSpotLayout, setTourSpotLayout] = useState(null);
-  const tourRefs = {
-    forkBtn: useRef(null),
-    modeToggle: useRef(null),
-    filtersToggle: useRef(null),
-    distanceRow: useRef(null),
-    maxDamageRow: useRef(null),
-    openNowRow: useRef(null),
-    hiddenGemsRow: useRef(null),
-    spotsRow: useRef(null),
-    forkAroundBtn: useRef(null),
-    infoBtn: useRef(null),
-  };
-
-  // Usage tracking & Pro status
-  const [forkUsage, setForkUsage] = useState({ solo: 0, group: 0, month: 0, year: 0 });
-  const [isProActive, setIsProActive] = useState(false);
-
-  // Fork Around state
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [groupStep, setGroupStep] = useState('menu'); // menu | hosting | joining | waiting | result
-  const [groupCode, setGroupCode] = useState('');
-  const [groupHostId, setGroupHostId] = useState(null);
-  const [groupParticipantId, setGroupParticipantId] = useState(null);
-  const [groupName, setGroupName] = useState('');
-  const [groupJoinCode, setGroupJoinCode] = useState('');
-  const [groupLocationName, setGroupLocationName] = useState('');
-  const [groupHostName, setGroupHostName] = useState('');
-  const [groupHostRadius, setGroupHostRadius] = useState(null);
-  const [groupParticipants, setGroupParticipants] = useState([]);
-  const [groupResult, setGroupResult] = useState(null);
-  const [groupLoading, setGroupLoading] = useState(false);
-  const [groupError, setGroupError] = useState('');
-  const [groupFiltersSubmitted, setGroupFiltersSubmitted] = useState(false);
-  const groupPollRef = useRef(null);
-  const [savedLocations, setSavedLocations] = useState([]);
+  // savedLocations removed — all spots now stored in customPlaces
 
   // Animations
   const spin = useRef(new Animated.Value(0)).current;
   const bounce = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef(null);
+  const scrollOffsetRef = useRef(0);
   const toastTimerRef = useRef(null);
   const isForkingRef = useRef(false);
   const forkTapsRef = useRef([]);
@@ -2028,11 +313,33 @@ export default function App() {
     [radiusMiles],
   );
 
+  // ──── Custom hooks ────
+  const {
+    showTour,
+    tourStep,
+    tourSpotLayout,
+    tourRefs,
+    startTour,
+    advanceTour,
+    retreatTour,
+    confirmCloseTour,
+  } = useTour({ filtersExpanded, setFiltersExpanded, setForkMode, scrollViewRef, scrollOffsetRef });
+
+  const { isPro, getCurrentUsage, incrementUsage, checkQuota, showPaywall } = useUsage({
+    showToast,
+  });
+
+  const group = useGroupSession({
+    ensureLocation,
+    customLocation,
+    checkQuota,
+    incrementUsage,
+  });
+
   // Cleanup timers on unmount
   useEffect(
     () => () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      if (addressDebounceRef.current) clearTimeout(addressDebounceRef.current);
       if (locationDebounceRef.current) clearTimeout(locationDebounceRef.current);
     },
     [],
@@ -2049,7 +356,6 @@ export default function App() {
           AsyncStorage.getItem(STORAGE_KEYS.TRAVEL_MODE),
           AsyncStorage.getItem(STORAGE_KEYS.API_FETCH_COUNT),
           AsyncStorage.getItem(STORAGE_KEYS.SAVED_LOCATIONS),
-          AsyncStorage.getItem(STORAGE_KEYS.FORK_USAGE),
         ]);
         const s = parseStoredState(raw);
         if (s.favorites) {
@@ -2065,143 +371,12 @@ export default function App() {
           }
         }
         if (s.fetchCount) apiFetchCountRef.current = s.fetchCount;
-        if (s.savedLocations) setSavedLocations(s.savedLocations);
-        if (s.forkUsage) setForkUsage(s.forkUsage);
+        // Clean up deprecated savedLocations storage
+        AsyncStorage.removeItem(STORAGE_KEYS.SAVED_LOCATIONS).catch(() => {});
       } catch (_) {
         // Storage read failures are non-critical — app works with defaults
       }
     })();
-  }, []);
-
-  // Initialize RevenueCat and listen for subscription changes
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-    const initRC = async () => {
-      try {
-        const apiKey = Platform.OS === 'ios' ? RC_APPLE_KEY : RC_GOOGLE_KEY;
-        await Purchases.configure({ apiKey });
-        const customerInfo = await Purchases.getCustomerInfo();
-        setIsProActive(typeof customerInfo.entitlements.active[RC_ENTITLEMENT_ID] !== 'undefined');
-      } catch (_) {
-        // RevenueCat init failure is non-critical — free tier still works
-      }
-    };
-    initRC();
-    const listener = Purchases.addCustomerInfoUpdateListener((info) => {
-      setIsProActive(typeof info.entitlements.active[RC_ENTITLEMENT_ID] !== 'undefined');
-    });
-    return () => listener.remove();
-  }, []);
-
-  // ──── Tour functions ────
-
-  function measureTourRef(refName) {
-    return new Promise((resolve) => {
-      const ref = tourRefs[refName];
-      if (!ref?.current?.measureInWindow) {
-        resolve(null);
-        return;
-      }
-      ref.current.measureInWindow((x, y, width, height) => {
-        resolve(width === 0 && height === 0 ? null : { x, y, width, height });
-      });
-    });
-  }
-
-  async function startTour() {
-    setTourStep(0);
-    setFiltersExpanded(false);
-    const layout = await measureTourRef('forkBtn');
-    setTourSpotLayout(layout);
-    setShowTour(true);
-  }
-
-  async function goToTourStep(target) {
-    if (target < 0 || target >= TOUR_STEP_COUNT) return;
-
-    const stepDef = TOUR_STEPS[target];
-
-    // Expand filters if needed for this step
-    const needsFilters =
-      stepDef.expandFilters ||
-      ['distanceRow', 'maxDamageRow', 'openNowRow', 'hiddenGemsRow'].includes(stepDef.ref);
-    if (needsFilters && !filtersExpanded) {
-      setFiltersExpanded(true);
-    } else if (
-      !needsFilters &&
-      filtersExpanded &&
-      ['forkBtn', 'modeToggle'].includes(stepDef.ref)
-    ) {
-      setFiltersExpanded(false);
-    }
-
-    // Switch to group mode for forkAroundBtn step, solo for others
-    if (stepDef.ref === 'forkAroundBtn') {
-      setForkMode('group');
-    } else {
-      setForkMode('solo');
-    }
-
-    // Scroll to bottom for elements below the fold, top for elements above
-    const needsScroll = ['spotsRow', 'forkAroundBtn', 'infoBtn'].includes(stepDef.ref);
-    if (needsScroll && scrollViewRef.current) {
-      scrollViewRef.current.scrollToEnd({ animated: true });
-    } else if (!needsScroll && scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ y: 0, animated: true });
-    }
-
-    // Steps with no ref — center the tooltip
-    if (!stepDef.ref) {
-      setTourStep(target);
-      setTourSpotLayout(null);
-      return;
-    }
-
-    // Wait for layout/scroll to fully settle, then measure
-    await new Promise((r) =>
-      setTimeout(r, needsScroll ? TOUR_SCROLL_SETTLE_MS : TOUR_EXPAND_DELAY),
-    );
-    await new Promise((r) => requestAnimationFrame(r));
-    const layout = await measureTourRef(stepDef.ref);
-    setTourStep(target);
-    setTourSpotLayout(layout);
-  }
-
-  function advanceTour() {
-    if (tourStep + 1 >= TOUR_STEP_COUNT) {
-      endTour();
-      return;
-    }
-    goToTourStep(tourStep + 1);
-  }
-
-  function retreatTour() {
-    if (tourStep > 0) goToTourStep(tourStep - 1);
-  }
-
-  function endTour() {
-    setShowTour(false);
-    setTourStep(0);
-    setTourSpotLayout(null);
-    setForkMode('solo');
-    setFiltersExpanded(false);
-    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
-    AsyncStorage.setItem(STORAGE_KEYS.TOUR_VERSION, String(TOUR_VERSION)).catch(() => {});
-  }
-
-  // Check if tour should show (first launch or new tour version)
-  useEffect(() => {
-    (async () => {
-      try {
-        const seen = await AsyncStorage.getItem(STORAGE_KEYS.TOUR_VERSION);
-        if (!seen || Number(seen) < TOUR_VERSION) {
-          setTimeout(() => startTour(), TOUR_LAUNCH_DELAY);
-        }
-      } catch (_) {
-        // Non-critical
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Location is deferred to first "Fork It" tap via ensureLocation() on all
@@ -2244,7 +419,7 @@ export default function App() {
     const loc = await getCurrentPosition();
     const newCoords = loc.coords;
     setCoords(newCoords);
-    safeStore('lastLocation', {
+    safeStore(STORAGE_KEYS.LAST_LOCATION, {
       latitude: newCoords.latitude,
       longitude: newCoords.longitude,
       timestamp: Date.now(),
@@ -2356,9 +531,24 @@ export default function App() {
       const mins = getMinutesUntilClosing(r.opening_hours);
       return mins === null || mins >= CLOSING_SOON_EXCLUDE_MIN;
     });
-    const eligibleCustom = customPlaces.filter(
-      (cp) => !recentSet.has(cp.place_id) && !isBlocked(cp.place_id, cp.name, blockedIds),
-    );
+    const eligibleCustom = customPlaces.filter((cp) => {
+      if (recentSet.has(cp.place_id)) return false;
+      if (isBlocked(cp.place_id, cp.name, blockedIds)) return false;
+      // Filter by exclude terms (match against name + tags)
+      if (excludeTerms.length > 0) {
+        const nameLower = (cp.name || '').toLowerCase();
+        const tagsLower = (cp.tags || '').toLowerCase();
+        if (excludeTerms.some((t) => nameLower.includes(t) || tagsLower.includes(t))) return false;
+      }
+      // Filter by cuisine keyword (match against tags)
+      if (cuisineKeyword.trim()) {
+        const kw = cuisineKeyword.trim().toLowerCase();
+        const tagsLower = (cp.tags || '').toLowerCase();
+        const nameLower = (cp.name || '').toLowerCase();
+        if (!tagsLower.includes(kw) && !nameLower.includes(kw)) return false;
+      }
+      return true;
+    });
     if (eligibleCustom.length > 0) {
       results = [...results, ...eligibleCustom];
     }
@@ -2383,282 +573,6 @@ export default function App() {
       ]);
     }, WALK_SUGGEST_DELAY);
   }
-
-  // ──── Fork Around functions ────
-
-  function stopGroupPolling() {
-    if (groupPollRef.current) {
-      clearInterval(groupPollRef.current);
-      groupPollRef.current = null;
-    }
-  }
-
-  function resetGroupState() {
-    stopGroupPolling();
-    setGroupStep('menu');
-    setGroupCode('');
-    setGroupHostId(null);
-    setGroupParticipantId(null);
-    setGroupName('');
-    setGroupJoinCode('');
-    setGroupLocationName('');
-    setGroupHostName('');
-    setGroupHostRadius(null);
-    setGroupParticipants([]);
-    setGroupResult(null);
-    setGroupLoading(false);
-    setGroupError('');
-    setGroupFiltersSubmitted(false);
-  }
-
-  /** Dismiss the group modal and clean up state. @returns {void} */
-  function dismissGroupModal() {
-    stopGroupPolling();
-    setShowGroupModal(false);
-    setTimeout(resetGroupState, GROUP_MODAL_CLOSE_DELAY);
-  }
-
-  /** Close the group modal, with confirmation if a session is active. */
-  function closeGroupModal() {
-    const config = getCloseModalConfig(groupStep, !!groupHostId);
-    if (!config) {
-      dismissGroupModal();
-      return;
-    }
-    showAlert(config.title, config.message, [
-      { text: 'Stay', style: 'cancel' },
-      {
-        text: config.confirmText,
-        style: 'destructive',
-        onPress: () => {
-          groupFetch('leave', { code: groupCode, participantId: groupParticipantId }).catch(
-            () => {},
-          );
-          dismissGroupModal();
-        },
-      },
-    ]);
-  }
-
-  /**
-   * Poll the session status every 2 seconds.
-   * @param {string} code - session code
-   */
-  function startGroupPolling(code) {
-    stopGroupPolling();
-    groupPollRef.current = setInterval(async () => {
-      try {
-        const response = await fetch(
-          `${BACKEND_URL}/api/group/status?code=${encodeURIComponent(code)}`,
-        );
-        if (!response.ok) {
-          if (response.status === GROUP_SESSION_EXPIRED_STATUS) {
-            stopGroupPolling();
-            setGroupError('Session expired or ended by host.');
-            setGroupStep('menu');
-          }
-          return;
-        }
-        const data = await response.json();
-        setGroupParticipants(data.participants || []);
-        if (data.status === 'done' && data.result) {
-          stopGroupPolling();
-          setGroupResult(data.result);
-          setGroupStep('result');
-        }
-      } catch (_) {
-        // Polling failure is non-critical — will retry on next interval
-      }
-    }, GROUP_POLL_INTERVAL);
-  }
-
-  /**
-   * Helper to POST to group API endpoints.
-   * @param {string} endpoint - e.g. 'create', 'join'
-   * @param {object} body - request body
-   * @returns {Promise<object>} parsed response
-   */
-  async function groupFetch(endpoint, body) {
-    const response = await fetch(`${BACKEND_URL}/api/group/${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `${endpoint} failed`);
-    return data;
-  }
-
-  /**
-   * Host creates a new group session.
-   * @param {object|null} overrideCoords - optional coordinates from location search
-   * @param {number} overrideCoords.latitude - latitude
-   * @param {number} overrideCoords.longitude - longitude
-   * @returns {Promise<void>}
-   */
-  async function groupCreate(overrideCoords) {
-    if (!groupName.trim()) {
-      setGroupError('Enter your name first.');
-      return;
-    }
-    setGroupLoading(true);
-    setGroupError('');
-    let coords;
-    if (overrideCoords?.latitude && overrideCoords?.longitude) {
-      coords = { latitude: overrideCoords.latitude, longitude: overrideCoords.longitude };
-    } else if (customLocation) {
-      coords = { latitude: customLocation.latitude, longitude: customLocation.longitude };
-    } else {
-      coords = await ensureLocation().catch(() => null);
-    }
-    if (!coords) {
-      setGroupError('Location is required to host. Search an address or enable GPS.');
-      setGroupLoading(false);
-      return;
-    }
-    try {
-      const data = await groupFetch('create', {
-        hostName: groupName.trim(),
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-        locationName: groupLocationName.trim(),
-      });
-      setGroupCode(data.code);
-      setGroupHostId(data.hostId);
-      setGroupParticipantId(data.hostId);
-      setGroupStep('hosting');
-      startGroupPolling(data.code);
-    } catch (_) {
-      setGroupError('Could not create session. Try again.');
-    } finally {
-      setGroupLoading(false);
-    }
-  }
-
-  /** Join an existing group session. @returns {Promise<void>} */
-  async function groupJoin() {
-    if (!groupName.trim()) {
-      setGroupError('Enter your name first.');
-      return;
-    }
-    if (groupJoinCode.trim().length !== 4) {
-      setGroupError('Enter the 4-letter code from the host.');
-      return;
-    }
-    setGroupLoading(true);
-    setGroupError('');
-    try {
-      const data = await groupFetch('join', {
-        code: groupJoinCode.trim().toUpperCase(),
-        name: groupName.trim(),
-      });
-      setGroupCode(data.code);
-      setGroupParticipantId(data.participantId);
-      if (data.locationName) setGroupLocationName(data.locationName);
-      if (data.hostName) setGroupHostName(data.hostName);
-      if (data.hostRadius) setGroupHostRadius(data.hostRadius);
-      setGroupParticipants(data.participants || []);
-      setGroupStep('waiting');
-      startGroupPolling(data.code);
-    } catch (e) {
-      setGroupError(e.message || 'Could not join session.');
-    } finally {
-      setGroupLoading(false);
-    }
-  }
-
-  /**
-   * Submit filters to the group session.
-   * @param {object} filters - Filter preferences from the group modal
-   * @param {number} filters.radiusMiles - Search radius in miles
-   * @param {number} filters.maxPrice - Maximum price level (1-4)
-   * @param {number} filters.minRating - Minimum rating threshold
-   * @param {boolean} filters.openNow - Whether to filter to open restaurants
-   * @param {boolean} filters.hiddenGems - Whether to filter to hidden gems
-   * @param {string} filters.cuisineKeyword - Cuisine keyword filter
-   * @param {string} filters.groupSize - Group size category
-   * @returns {Promise<void>}
-   */
-  async function groupSubmitFilters(filters) {
-    setGroupLoading(true);
-    setGroupError('');
-    try {
-      const data = await groupFetch('filters', {
-        code: groupCode,
-        participantId: groupParticipantId,
-        filters: {
-          radiusMiles: filters.radiusMiles,
-          maxPrice: filters.maxPrice,
-          minRating: filters.minRating,
-          openNow: filters.openNow,
-          hiddenGems: filters.hiddenGems,
-          cuisineKeyword: (filters.cuisineKeyword || '').trim(),
-          groupSize: filters.groupSize,
-        },
-      });
-      setGroupParticipants(data.participants || []);
-      setGroupFiltersSubmitted(true);
-    } catch (_) {
-      setGroupError('Could not submit filters. Try again.');
-    } finally {
-      setGroupLoading(false);
-    }
-  }
-
-  /**
-   * Host triggers the group pick.
-   */
-  async function groupTriggerPick() {
-    setGroupLoading(true);
-    setGroupError('');
-    try {
-      const data = await groupFetch('pick', { code: groupCode, hostId: groupHostId });
-      if (data.status === 'no_results') {
-        setGroupError(data.message);
-        setGroupLoading(false);
-      } else {
-        incrementUsage('group');
-      }
-      // Stay in loading state — result will arrive through polling
-    } catch (e) {
-      setGroupError(e.message || 'Pick failed. Try again.');
-      setGroupLoading(false);
-    }
-  }
-
-  /**
-   * Leave the current group session.
-   */
-  async function groupLeave() {
-    groupFetch('leave', { code: groupCode, participantId: groupParticipantId }).catch(() => {});
-    closeGroupModal();
-  }
-
-  /**
-   * Save a location for quick reuse.
-   * @param {object} loc - { label, latitude, longitude }
-   * @returns {void}
-   */
-  function saveLocation(loc) {
-    const exists = savedLocations.some((s) => s.label.toLowerCase() === loc.label.toLowerCase());
-    if (exists) return;
-    const updated = [...savedLocations, loc].slice(-MAX_SAVED_LOCATIONS);
-    setSavedLocations(updated);
-    safeStore(STORAGE_KEYS.SAVED_LOCATIONS, updated);
-  }
-
-  /**
-   * Delete a saved location by label.
-   * @param {string} label - location label to remove
-   * @returns {void}
-   */
-  function deleteSavedLocation(label) {
-    const updated = savedLocations.filter((s) => s.label !== label);
-    setSavedLocations(updated);
-    safeStore(STORAGE_KEYS.SAVED_LOCATIONS, updated);
-  }
-
-  // ──── End Fork Around functions ────
 
   async function runSlotReveal(results) {
     const cycles = Math.min(SLOT_MAX_CYCLES, Math.max(SLOT_MIN_CYCLES, results.length));
@@ -2691,141 +605,17 @@ export default function App() {
   }
 
   /**
-   * Check if the user has an active Pro subscription.
-   * @returns {boolean} true if Pro is active
-   */
-  function isPro() {
-    return isProActive;
-  }
-
-  /**
-   * Get the current month's usage, auto-resetting if the month has changed.
-   * @returns {{solo: number, group: number, month: number, year: number}}
-   */
-  function getCurrentUsage() {
-    const now = new Date();
-    if (forkUsage.month === now.getMonth() && forkUsage.year === now.getFullYear()) {
-      return forkUsage;
-    }
-    // New month — reset
-    const reset = { solo: 0, group: 0, month: now.getMonth(), year: now.getFullYear() };
-    setForkUsage(reset);
-    safeStore(STORAGE_KEYS.FORK_USAGE, reset);
-    return reset;
-  }
-
-  /**
-   * Increment the fork usage counter and persist it.
-   * @param {'solo' | 'group'} type - which counter to increment
-   */
-  function incrementUsage(type) {
-    const now = new Date();
-    const current = getCurrentUsage();
-    const updated = { ...current, month: now.getMonth(), year: now.getFullYear() };
-    updated[type === 'solo' ? 'solo' : 'group'] += 1;
-    setForkUsage(updated);
-    safeStore(STORAGE_KEYS.FORK_USAGE, updated);
-  }
-
-  /**
-   * Check if the user has quota for the given fork type. Shows paywall if not.
-   * @param {'solo' | 'group'} type - which quota to check
-   * @returns {boolean} true if allowed
-   */
-  function checkQuota(type) {
-    if (isPro()) return true;
-    const usage = getCurrentUsage();
-    const limit = type === 'solo' ? FREE_SOLO_FORKS : FREE_GROUP_FORKS;
-    const count = type === 'solo' ? usage.solo : usage.group;
-    if (count < limit) return true;
-    showPaywall(type);
-    return false;
-  }
-
-  /**
-   * Show the upgrade paywall dialog.
-   * @param {'solo' | 'group'} type - which limit was hit
-   */
-  async function showPaywall(type) {
-    if (Platform.OS === 'web') return;
-    try {
-      const offerings = await Purchases.getOfferings();
-      const monthly = offerings.current?.monthly;
-      if (!monthly) {
-        showAlert('Oops', 'Unable to load subscription info. Please try again later.');
-        return;
-      }
-      const price = monthly.product.priceString || PRO_PRICE_LABEL;
-      const message =
-        type === 'solo'
-          ? `You've explored a lot this month!\n\nGo Pro for ${price} — unlimited searches with as many re-rolls as you want.\n\nFree searches reset on the 1st.`
-          : `You've used your free Fork Around session this month.\n\nGo Pro for ${price} — unlimited group sessions.\n\nFree sessions reset on the 1st.`;
-      showAlert('Upgrade to ForkIt! Pro', message, [
-        { text: 'Not Now', style: 'cancel' },
-        {
-          text: 'Restore Purchase',
-          onPress: async () => {
-            try {
-              const info = await Purchases.restorePurchases();
-              if (typeof info.entitlements.active[RC_ENTITLEMENT_ID] !== 'undefined') {
-                showToast('Pro restored! Welcome back.', 'success', TOAST_LONG);
-              } else {
-                showToast('No active subscription found.', 'warn', TOAST_DEFAULT);
-              }
-            } catch (_) {
-              showToast('Restore failed. Please try again.', 'warn', TOAST_DEFAULT);
-            }
-          },
-        },
-        {
-          text: 'Go Pro',
-          onPress: async () => {
-            try {
-              const { customerInfo } = await Purchases.purchasePackage(monthly);
-              if (typeof customerInfo.entitlements.active[RC_ENTITLEMENT_ID] !== 'undefined') {
-                showToast('Welcome to Pro! Unlimited forks unlocked.', 'success', TOAST_LONG);
-              }
-            } catch (e) {
-              if (!e.userCancelled) {
-                showToast('Purchase failed. Please try again.', 'warn', TOAST_DEFAULT);
-              }
-            }
-          },
-        },
-      ]);
-    } catch (_) {
-      showAlert('Oops', 'Unable to load subscription info. Please try again later.');
-    }
-  }
-
-  /**
-   * Increment the API fetch counter and maybe show a tip prompt.
+   * Increment the API fetch counter.
    * Called only when we actually hit the backend (not from cache).
    */
   function trackApiFetch() {
     const count = ++apiFetchCountRef.current;
     AsyncStorage.setItem(STORAGE_KEYS.API_FETCH_COUNT, String(count)).catch(() => {});
-    const pastFirst = count - TIP_PROMPT_FIRST;
-    if (count === TIP_PROMPT_FIRST || (pastFirst > 0 && pastFirst % TIP_PROMPT_INTERVAL === 0)) {
-      setTimeout(() => {
-        showAlert(
-          'You love ForkIt!',
-          "You've been using this app a lot — awesome! Did you know each search costs real money " +
-            'in Google API fees? If ForkIt has helped you find great food, consider tipping the ' +
-            'developer to help keep it free for everyone.',
-          [
-            { text: 'Maybe Later', style: 'cancel' },
-            { text: 'Support ForkIt', onPress: () => setShowSupport(true) },
-          ],
-        );
-      }, SUPPORT_MODAL_DELAY);
-    }
   }
 
   async function forkIt() {
     if (isForkingRef.current) return;
     if (isThrottled()) return;
-    if (!checkQuota('solo')) return;
 
     isForkingRef.current = true;
 
@@ -2888,6 +678,12 @@ export default function App() {
       if (cacheValid) {
         raw = cache.results;
       } else {
+        // Quota check only on actual API fetch — cached re-rolls are always free
+        if (!checkQuota('solo')) {
+          setLoading(false);
+          isForkingRef.current = false;
+          return;
+        }
         raw = await fetchNearbyPlaces(currentCoords);
         // Store the full unfiltered pool in cache
         poolCacheRef.current = {
@@ -2960,8 +756,14 @@ export default function App() {
     }
   }
 
-  const placeName = pickedDetails?.name || picked?.name;
-  const signatureDish = placeName ? getSignatureDish(placeName) : null;
+  const placeName = useMemo(
+    () => pickedDetails?.name || picked?.name,
+    [pickedDetails?.name, picked?.name],
+  );
+  const signatureDish = useMemo(
+    () => (placeName ? getSignatureDish(placeName) : null),
+    [placeName],
+  );
   const recipeLinks = useMemo(() => {
     if (!placeName || !signatureDish) return [];
     // Pass empty string for unknown signature dish to avoid "copycat copycat" in search
@@ -2996,6 +798,10 @@ export default function App() {
           ref={scrollViewRef}
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
+          onScroll={(e) => {
+            scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
           refreshControl={
             Platform.OS !== 'web' ? (
               <RefreshControl
@@ -3010,7 +816,7 @@ export default function App() {
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>
+              <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit>
                 Fork<Text style={styles.titleIt}>It</Text>
               </Text>
               <View
@@ -3021,7 +827,9 @@ export default function App() {
                 <ForkIcon size={44} color={THEME.accent} rotation="0deg" />
               </View>
             </View>
-            <Text style={styles.subtitle}>RANDOM RESTAURANT PICKER</Text>
+            <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit>
+              RANDOM RESTAURANT PICKER
+            </Text>
           </View>
 
           {/* Hero */}
@@ -3047,10 +855,12 @@ export default function App() {
                   label="Fork Around"
                   icon="people"
                   onPress={() => {
-                    if (checkQuota('group')) {
-                      resetGroupState();
-                      setShowGroupModal(true);
+                    if (group.groupStep === 'hosting' || group.groupStep === 'waiting') {
+                      group.setShowGroupModal(true);
+                      return;
                     }
+                    group.resetGroupState();
+                    group.setShowGroupModal(true);
                   }}
                   disabled={false}
                   loading={false}
@@ -3059,6 +869,22 @@ export default function App() {
                 />
               </View>
             )}
+
+            {!group.showGroupModal &&
+              (group.groupStep === 'hosting' || group.groupStep === 'waiting') && (
+                <TouchableOpacity
+                  style={styles.activeSessionBanner}
+                  onPress={() => group.setShowGroupModal(true)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel="Return to active Fork Around session"
+                >
+                  <Ionicons name="people" size={16} color={THEME.white} />
+                  <Text style={styles.activeSessionText}>
+                    {group.groupHostId ? 'Hosting' : 'Joined'} {group.groupCode} — tap to return
+                  </Text>
+                </TouchableOpacity>
+              )}
 
             {!isPro() && !loading && (
               <UsageHint mode={forkMode} usage={getCurrentUsage()} onPaywall={showPaywall} />
@@ -3081,201 +907,213 @@ export default function App() {
               </View>
             ) : null}
 
-            {/* Collapsible Filters */}
-            <TouchableOpacity
-              ref={tourRefs.filtersToggle}
-              onPress={() => setFiltersExpanded(!filtersExpanded)}
-              activeOpacity={0.85}
-              style={styles.filtersToggle}
-              accessibilityRole="button"
-              accessibilityLabel={filtersExpanded ? 'Collapse filters' : 'Expand filters'}
-              accessibilityState={{ expanded: filtersExpanded }}
-            >
-              <View style={styles.rowCenter}>
-                <Ionicons name="options" size={16} color={THEME.textBright} />
-                <Text style={styles.filtersToggleText}>Filters</Text>
-                {!filtersExpanded && poolCount > 0 && (
-                  <Text style={styles.filterCount}>{poolCount} found</Text>
-                )}
-              </View>
-              <Ionicons
-                name={filtersExpanded ? 'chevron-up' : 'chevron-down'}
-                size={18}
-                color={THEME.textSubtle}
-              />
-            </TouchableOpacity>
-
-            {filtersExpanded && (
-              <View style={styles.filtersContent}>
-                <Text style={styles.label}>How far?</Text>
-                <View ref={tourRefs.distanceRow} collapsable={false} style={styles.row}>
-                  {(travelMode === 'walk'
-                    ? [
-                        { v: 0.25, t: '¼ mi' },
-                        { v: 0.5, t: '½ mi' },
-                        { v: 1, t: '1 mi' },
-                        { v: 1.5, t: '1½ mi' },
-                      ]
-                    : [
-                        { v: 1, t: '1 mi' },
-                        { v: 3, t: '3 mi' },
-                        { v: 5, t: '5 mi' },
-                        { v: 10, t: '10 mi' },
-                      ]
-                  ).map((m) => (
-                    <Chip
-                      key={m.v}
-                      label={m.t}
-                      icon="navigate"
-                      active={radiusMiles === m.v}
-                      onPress={() => setRadiusMiles(m.v)}
-                    />
-                  ))}
-                  <Chip
-                    label=""
-                    icon="location"
-                    active={!!customLocation || showLocationSearch}
-                    onPress={() => {
-                      if (customLocation) {
-                        clearCustomLocation();
-                      } else {
-                        setShowLocationSearch((v) => !v);
-                      }
-                    }}
-                  />
-                </View>
-                <LocationSearchSection
-                  customLocation={customLocation}
-                  showLocationSearch={showLocationSearch}
-                  locationQuery={locationQuery}
-                  locationSuggestions={locationSuggestions}
-                  onQueryChange={handleLocationQueryChange}
-                  onSelectSuggestion={selectCustomLocation}
-                  onClear={clearCustomLocation}
-                  onOpen={() => setShowLocationSearch(true)}
-                  onCancel={() => {
-                    setShowLocationSearch(false);
-                    setLocationQuery('');
-                    setLocationSuggestions([]);
-                  }}
-                />
-
-                <View ref={tourRefs.maxDamageRow} collapsable={false}>
-                  <Text style={styles.label}>Max damage</Text>
-                  <View style={styles.row}>
-                    {[
-                      { v: 1, t: '$' },
-                      { v: 2, t: '$$' },
-                      { v: 3, t: '$$$' },
-                      { v: 4, t: '$$$$' },
-                    ].map((p) => (
-                      <Chip
-                        key={p.v}
-                        label={p.t}
-                        icon="pricetag"
-                        active={maxPrice === p.v}
-                        onPress={() => setMaxPrice(p.v)}
-                      />
-                    ))}
+            {/* Collapsible Filters — hidden in group mode */}
+            {forkMode === 'group' ? (
+              <Text style={styles.groupFiltersHint}>
+                Set your filters after starting a session.
+              </Text>
+            ) : (
+              <>
+                <TouchableOpacity
+                  ref={tourRefs.filtersToggle}
+                  onPress={() => setFiltersExpanded(!filtersExpanded)}
+                  activeOpacity={0.85}
+                  style={styles.filtersToggle}
+                  accessibilityRole="button"
+                  accessibilityLabel={filtersExpanded ? 'Collapse filters' : 'Expand filters'}
+                  accessibilityState={{ expanded: filtersExpanded }}
+                >
+                  <View style={styles.rowCenter}>
+                    <Ionicons name="options" size={16} color={THEME.textBright} />
+                    <Text style={styles.filtersToggleText} numberOfLines={1}>
+                      Filters
+                    </Text>
+                    {!filtersExpanded && poolCount > 0 && (
+                      <Text style={styles.filterCount}>{poolCount} found</Text>
+                    )}
                   </View>
+                  <Ionicons
+                    name={filtersExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={THEME.textSubtle}
+                  />
+                </TouchableOpacity>
 
-                  <Text style={styles.label}>At least this good</Text>
-                  <View style={styles.row}>
-                    {[RATING_LOW, RATING_DEFAULT, RATING_HIGH, RATING_TOP].map((r) => (
+                {filtersExpanded && (
+                  <View style={styles.filtersContent}>
+                    <Text style={styles.label}>How far?</Text>
+                    <View ref={tourRefs.distanceRow} collapsable={false} style={styles.row}>
+                      {(travelMode === 'walk'
+                        ? [
+                            { v: 0.25, t: '¼ mi' },
+                            { v: 0.5, t: '½ mi' },
+                            { v: 1, t: '1 mi' },
+                            { v: 1.5, t: '1½ mi' },
+                          ]
+                        : [
+                            { v: 1, t: '1 mi' },
+                            { v: 3, t: '3 mi' },
+                            { v: 5, t: '5 mi' },
+                            { v: 10, t: '10 mi' },
+                          ]
+                      ).map((m) => (
+                        <Chip
+                          key={m.v}
+                          label={m.t}
+                          icon="navigate"
+                          active={radiusMiles === m.v}
+                          onPress={() => setRadiusMiles(m.v)}
+                        />
+                      ))}
                       <Chip
-                        key={r}
-                        label={`${r}+`}
-                        icon="star"
-                        active={minRating === r}
-                        onPress={() => setMinRating(r)}
+                        label=""
+                        icon="location"
+                        active={!!customLocation || showLocationSearch}
+                        onPress={() => {
+                          if (customLocation) {
+                            clearCustomLocation();
+                          } else {
+                            setShowLocationSearch((v) => !v);
+                          }
+                        }}
                       />
-                    ))}
-                  </View>
-                </View>
-
-                <Text style={styles.label}>Cuisine keyword (optional)</Text>
-                <View style={styles.inputWrap}>
-                  <Ionicons name="search" size={16} color={THEME.textSubtle} />
-                  <TextInput
-                    value={cuisineKeyword}
-                    onChangeText={setCuisineKeyword}
-                    placeholder="ramen, tacos, thai…"
-                    placeholderTextColor={THEME.textFaint}
-                    style={styles.input}
-                    accessibilityLabel="Cuisine keyword filter"
-                    returnKeyType="search"
-                    keyboardAppearance="dark"
-                    autoCorrect={false}
-                    onSubmitEditing={forkIt}
-                  />
-                </View>
-
-                <Text style={styles.label}>Not in the mood for (optional)</Text>
-                <View style={styles.inputWrap}>
-                  <Ionicons name="close-circle" size={16} color={THEME.textSubtle} />
-                  <TextInput
-                    value={excludeKeyword}
-                    onChangeText={setExcludeKeyword}
-                    placeholder="pizza, indian, sushi…"
-                    placeholderTextColor={THEME.textFaint}
-                    style={styles.input}
-                    accessibilityLabel="Exclude cuisine filter"
-                    returnKeyType="search"
-                    keyboardAppearance="dark"
-                    autoCorrect={false}
-                    onSubmitEditing={forkIt}
-                  />
-                </View>
-
-                <View ref={tourRefs.openNowRow} collapsable={false} style={styles.toggleRow}>
-                  <Text style={styles.toggleLabel}>Open now</Text>
-                  <Chip
-                    label={openNow ? 'ON' : 'OFF'}
-                    icon="time"
-                    active={openNow}
-                    onPress={() => setOpenNow((v) => !v)}
-                  />
-                </View>
-
-                <View ref={tourRefs.hiddenGemsRow} collapsable={false} style={styles.toggleRow}>
-                  <Text style={styles.toggleLabel}>Skip the chains</Text>
-                  <Chip
-                    label={hiddenGems ? 'ON' : 'OFF'}
-                    icon="sparkles"
-                    active={hiddenGems}
-                    onPress={() => setHiddenGems((v) => !v)}
-                  />
-                </View>
-
-                {recentlyShown.length > 0 && (
-                  <View style={styles.toggleRow}>
-                    <Text style={styles.toggleLabel}>Recently shown: {recentlyShown.length}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setRecentlyShown([]);
-                        showToast(
-                          'History cleared! All restaurants available again.',
-                          'success',
-                          TOAST_DEFAULT,
-                        );
+                    </View>
+                    <LocationSearchSection
+                      customLocation={customLocation}
+                      showLocationSearch={showLocationSearch}
+                      locationQuery={locationQuery}
+                      locationSuggestions={locationSuggestions}
+                      onQueryChange={handleLocationQueryChange}
+                      onSelectSuggestion={selectCustomLocation}
+                      onCancel={() => {
+                        setShowLocationSearch(false);
+                        setLocationQuery('');
+                        setLocationSuggestions([]);
                       }}
-                      activeOpacity={0.85}
-                      style={styles.clearBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Clear history, ${recentlyShown.length} restaurants shown`}
-                    >
-                      <Ionicons
-                        name="refresh"
-                        size={12}
-                        color={THEME.textAlmostWhite}
-                        style={styles.iconMarginRight6}
-                        importantForAccessibility="no"
+                    />
+
+                    <View ref={tourRefs.maxDamageRow} collapsable={false}>
+                      <Text style={styles.label}>Max damage</Text>
+                      <View style={styles.row}>
+                        {[
+                          { v: 1, t: '$' },
+                          { v: 2, t: '$$' },
+                          { v: 3, t: '$$$' },
+                          { v: 4, t: '$$$$' },
+                        ].map((p) => (
+                          <Chip
+                            key={p.v}
+                            label={p.t}
+                            icon="pricetag"
+                            active={maxPrice === p.v}
+                            onPress={() => setMaxPrice(p.v)}
+                          />
+                        ))}
+                      </View>
+
+                      <Text style={styles.label}>At least this good</Text>
+                      <View style={styles.row}>
+                        {[RATING_LOW, RATING_DEFAULT, RATING_HIGH, RATING_TOP].map((r) => (
+                          <Chip
+                            key={r}
+                            label={`${r}+`}
+                            icon="star"
+                            active={minRating === r}
+                            onPress={() => setMinRating(r)}
+                          />
+                        ))}
+                      </View>
+                    </View>
+
+                    <View ref={tourRefs.keywordFields} collapsable={false}>
+                      <Text style={styles.label}>Cuisine keyword (optional)</Text>
+                      <View style={styles.inputWrap}>
+                        <Ionicons name="search" size={16} color={THEME.textSubtle} />
+                        <TextInput
+                          value={cuisineKeyword}
+                          onChangeText={setCuisineKeyword}
+                          placeholder="ramen, tacos, thai…"
+                          placeholderTextColor={THEME.textFaint}
+                          style={styles.input}
+                          accessibilityLabel="Cuisine keyword filter"
+                          returnKeyType="search"
+                          keyboardAppearance="dark"
+                          autoCorrect={false}
+                          onSubmitEditing={forkIt}
+                        />
+                      </View>
+
+                      <Text style={styles.label}>Not in the mood for (optional)</Text>
+                      <View style={styles.inputWrap}>
+                        <Ionicons name="close-circle" size={16} color={THEME.textSubtle} />
+                        <TextInput
+                          value={excludeKeyword}
+                          onChangeText={setExcludeKeyword}
+                          placeholder="pizza, indian, sushi…"
+                          placeholderTextColor={THEME.textFaint}
+                          style={styles.input}
+                          accessibilityLabel="Exclude cuisine filter"
+                          returnKeyType="search"
+                          keyboardAppearance="dark"
+                          autoCorrect={false}
+                          onSubmitEditing={forkIt}
+                        />
+                      </View>
+                    </View>
+
+                    <View ref={tourRefs.openNowRow} collapsable={false} style={styles.toggleRow}>
+                      <Text style={styles.toggleLabel}>Open now</Text>
+                      <Chip
+                        label={openNow ? 'ON' : 'OFF'}
+                        icon="time"
+                        active={openNow}
+                        onPress={() => setOpenNow((v) => !v)}
                       />
-                      <Text style={styles.clearBtnText}>Clear History</Text>
-                    </TouchableOpacity>
+                    </View>
+
+                    <View ref={tourRefs.hiddenGemsRow} collapsable={false} style={styles.toggleRow}>
+                      <Text style={styles.toggleLabel}>Skip the chains</Text>
+                      <Chip
+                        label={hiddenGems ? 'ON' : 'OFF'}
+                        icon="sparkles"
+                        active={hiddenGems}
+                        onPress={() => setHiddenGems((v) => !v)}
+                      />
+                    </View>
+
+                    {recentlyShown.length > 0 && (
+                      <View style={styles.toggleRow}>
+                        <Text style={styles.toggleLabel}>
+                          Recently shown: {recentlyShown.length}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setRecentlyShown([]);
+                            showToast(
+                              'History cleared! All restaurants available again.',
+                              'success',
+                              TOAST_DEFAULT,
+                            );
+                          }}
+                          activeOpacity={0.85}
+                          style={styles.clearBtn}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Clear history, ${recentlyShown.length} restaurants shown`}
+                        >
+                          <Ionicons
+                            name="refresh"
+                            size={12}
+                            color={THEME.textAlmostWhite}
+                            style={styles.iconMarginRight6}
+                            importantForAccessibility="no"
+                          />
+                          <Text style={styles.clearBtnText}>Clear History</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 )}
-              </View>
+              </>
             )}
 
             <View ref={tourRefs.spotsRow} collapsable={false}>
@@ -3291,7 +1129,10 @@ export default function App() {
                     setRadiusMiles(DRIVE_RADIUS_DEFAULT);
                 }}
                 forkMode={forkMode}
-                onToggleFork={() => setForkMode((m) => (m === 'solo' ? 'group' : 'solo'))}
+                onToggleFork={() => {
+                  setForkMode((m) => (m === 'solo' ? 'group' : 'solo'));
+                  setFiltersExpanded(false);
+                }}
                 favorites={favorites}
                 blockedIds={blockedIds}
                 onShowFavorites={() => setShowFavorites(true)}
@@ -3302,8 +1143,8 @@ export default function App() {
             </View>
           </View>
 
-          {/* Result - Moved to top */}
-          {picked ? (
+          {/* Result - solo mode only (group results show in modal) */}
+          {picked && forkMode === 'solo' ? (
             <GlassCard title="You're going here" icon="restaurant" accent>
               <>
                 <Text style={styles.placeName} accessibilityRole="header">
@@ -3537,7 +1378,7 @@ export default function App() {
                     {recipeLinks.map((l) => (
                       <TouchableOpacity
                         key={l.url}
-                        onPress={() => Linking.openURL(l.url)}
+                        onPress={() => Linking.openURL(l.url).catch(() => {})}
                         activeOpacity={0.85}
                         style={styles.linkRow}
                         accessibilityRole="link"
@@ -3571,14 +1412,6 @@ export default function App() {
           <View style={styles.footerRow}>
             <View style={styles.footerIcons}>
               <TouchableOpacity
-                onPress={() => setShowSupport(true)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                accessibilityRole="button"
-                accessibilityLabel="Support ForkIt"
-              >
-                <Ionicons name="cafe-outline" size={18} color={THEME.textHint} />
-              </TouchableOpacity>
-              <TouchableOpacity
                 ref={tourRefs.infoBtn}
                 onPress={() => setShowInfo(true)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -3590,1014 +1423,100 @@ export default function App() {
             </View>
             <Text style={styles.footer}>Life's too short to debate dinner.</Text>
           </View>
+
+          {!group.showGroupModal && group.groupStep === 'result' && group.groupResult && (
+            <View>
+              <Text style={styles.resultSectionHeader}>Recent Fork Around</Text>
+              <ResultBanner
+                groupCode={group.groupCode}
+                resultName={group.groupResult.name}
+                resultTime={group.groupResultTime}
+                isHost={!!group.groupHostId}
+                onPress={() => group.setShowGroupModal(true)}
+              />
+            </View>
+          )}
         </ScrollView>
 
         {/* Tour Spotlight Modal */}
-        <Modal
+        <TourOverlay
           visible={showTour}
-          transparent
-          animationType="fade"
-          onRequestClose={endTour}
-          statusBarTranslucent
-        >
-          <View style={styles.tourOverlay} accessibilityViewIsModal>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={endTour}
-              accessibilityLabel="Skip tour"
-              accessibilityRole="button"
-            />
+          tourStep={tourStep}
+          tourSpotLayout={tourSpotLayout}
+          onAdvance={advanceTour}
+          onRetreat={retreatTour}
+          onClose={confirmCloseTour}
+        />
 
-            {tourSpotLayout && (
-              <View
-                style={[
-                  styles.tourSpotlight,
-                  {
-                    top: tourSpotLayout.y - TOUR_SPOT_PAD,
-                    left: tourSpotLayout.x - TOUR_SPOT_PAD,
-                    width: tourSpotLayout.width + TOUR_SPOT_PAD * 2,
-                    height: tourSpotLayout.height + TOUR_SPOT_PAD * 2,
-                    borderRadius: TOUR_STEPS[tourStep]?.ref === 'infoBtn' ? 999 : TOUR_SPOT_RADIUS,
-                  },
-                ]}
-                pointerEvents="none"
-              />
-            )}
-
-            {(tourSpotLayout || TOUR_STEPS[tourStep]?.mock) && (
-              <View
-                style={[
-                  styles.tourTooltip,
-                  tourSpotLayout
-                    ? TOUR_STEPS[tourStep]?.arrow === 'down'
-                      ? { top: tourSpotLayout.y + tourSpotLayout.height + TOUR_SPOT_PAD * 3 }
-                      : {
-                          top: Math.max(
-                            tourSpotLayout.y - TOUR_TOOLTIP_HEIGHT,
-                            TOUR_TOOLTIP_MIN_TOP,
-                          ),
-                        }
-                    : styles.tourTooltipCentered,
-                ]}
-                pointerEvents="box-none"
-              >
-                {tourSpotLayout && TOUR_STEPS[tourStep]?.arrow && (
-                  <View
-                    style={[
-                      styles.tourArrow,
-                      TOUR_STEPS[tourStep]?.arrow === 'down'
-                        ? styles.tourArrowUp
-                        : styles.tourArrowDown,
-                      {
-                        left: Math.min(
-                          Math.max(
-                            tourSpotLayout.x + tourSpotLayout.width / 2 - TOUR_ARROW_OFFSET,
-                            10,
-                          ),
-                          Dimensions.get('window').width - TOUR_ARROW_OFFSET * 2,
-                        ),
-                      },
-                    ]}
-                  />
-                )}
-                <Text style={styles.tourStepCount}>
-                  {tourStep + 1} of {TOUR_STEP_COUNT}
-                </Text>
-                <Text style={styles.tourTitle}>{TOUR_STEPS[tourStep]?.title}</Text>
-                <Text style={styles.tourDesc}>{TOUR_STEPS[tourStep]?.desc}</Text>
-
-                <View style={styles.tourFooter}>
-                  {tourStep > 0 ? (
-                    <TouchableOpacity
-                      style={styles.tourBackBtn}
-                      onPress={retreatTour}
-                      accessibilityRole="button"
-                      accessibilityLabel="Previous step"
-                    >
-                      <Text style={styles.tourBackText}>Back</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.tourBackSpacer} />
-                  )}
-                  <View style={styles.tourDots}>
-                    {Array.from({ length: TOUR_STEP_COUNT }).map((_, i) => (
-                      <View
-                        key={i}
-                        style={[styles.tourDot, i === tourStep && styles.tourDotActive]}
-                      />
-                    ))}
-                  </View>
-                  <TouchableOpacity
-                    style={styles.tourNextBtn}
-                    onPress={advanceTour}
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      tourStep === TOUR_STEP_COUNT - 1 ? 'Finish tour' : 'Next step'
-                    }
-                  >
-                    <Text style={styles.tourNextText}>
-                      {tourStep === TOUR_STEP_COUNT - 1 ? 'Get Forking!' : 'Next'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {tourStep < TOUR_STEP_COUNT - 1 && (
-                  <TouchableOpacity
-                    onPress={endTour}
-                    style={styles.tourSkip}
-                    accessibilityRole="button"
-                    accessibilityLabel="Skip tour"
-                  >
-                    <Text style={styles.tourSkipText}>Skip tour</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-          </View>
-        </Modal>
-
-        <Modal
+        <InfoModal
           visible={showInfo}
-          transparent
-          animationType="fade"
-          onRequestClose={() => {
-            setShowInfo(false);
-            easterEggTaps.current = 0;
-          }}
-          statusBarTranslucent
-        >
-          <View style={styles.infoOverlay} accessibilityViewIsModal>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={() => {
-                setShowInfo(false);
-                easterEggTaps.current = 0;
-              }}
-              accessibilityLabel="Close info"
-              accessibilityRole="button"
-            />
-            <View style={styles.infoCard} accessibilityRole="none">
-              <TouchableOpacity
-                style={styles.infoClose}
-                onPress={() => {
-                  setShowInfo(false);
-                  easterEggTaps.current = 0;
-                }}
-                accessibilityLabel="Close"
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={22} color={THEME.textIcon} />
-              </TouchableOpacity>
-
-              <View style={[styles.infoModalRow, styles.modalContentHeight]}>
-                <ScrollView
-                  style={styles.flex1}
-                  showsVerticalScrollIndicator={false}
-                  onContentSizeChange={(w, h) =>
-                    setInfoScrollVisible(h > SCREEN_HEIGHT * MODAL_CONTENT_RATIO)
-                  }
-                  onScroll={({ nativeEvent }) => {
-                    const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
-                    const maxScroll = contentSize.height - layoutMeasurement.height;
-                    setInfoScrollRatio(maxScroll > 0 ? contentOffset.y / maxScroll : 0);
-                  }}
-                  scrollEventThrottle={16}
-                >
-                  <TouchableOpacity
-                    style={styles.tourLaunchBtn}
-                    onPress={() => {
-                      setShowInfo(false);
-                      easterEggTaps.current = 0;
-                      setTimeout(() => startTour(), SUPPORT_MODAL_DELAY);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Take a tour of ForkIt features"
-                  >
-                    <Ionicons name="compass-outline" size={16} color={THEME.pop} />
-                    <Text style={styles.tourLaunchText}>Take a Tour</Text>
-                    <Text style={styles.tourLaunchSub}>or read below</Text>
-                  </TouchableOpacity>
-
-                  <Text
-                    style={[styles.infoHeading, styles.marginTopNone]}
-                    accessibilityRole="header"
-                  >
-                    How ForkIt! Works
-                  </Text>
-                  <Text style={styles.infoText}>
-                    ForkIt! uses Google Maps to find restaurants near you based on your filters,
-                    then picks one at random - so you never have to debate dinner again.
-                  </Text>
-
-                  <Text style={styles.infoHeading} accessibilityRole="header">
-                    Powered by Google Places
-                  </Text>
-                  <Text style={styles.infoText}>
-                    Restaurant names, ratings, prices, and hours all come from Google's Places API.
-                    We don't make this stuff up.
-                  </Text>
-
-                  <Text style={styles.infoHeading} accessibilityRole="header">
-                    Filters & Search
-                  </Text>
-                  <Text style={styles.infoText}>
-                    Use cuisine keywords to narrow results (e.g. "pizza", "seafood"). Pick quick-tap
-                    filters for common cravings. ForkIt! also remembers what it already showed you
-                    during your session and won't repeat them - resets when you close the app.
-                  </Text>
-
-                  <Text style={styles.infoHeading} accessibilityRole="header">
-                    Skip the Chains
-                  </Text>
-                  <Text style={styles.infoText}>
-                    When this is on, ForkIt! filters out common chain restaurants and places with
-                    lots of reviews (500+) so you're more likely to discover local spots. Turn it
-                    off if you're cool with the usual suspects.
-                  </Text>
-
-                  <Text style={styles.infoHeading} accessibilityRole="header">
-                    Limitations
-                  </Text>
-                  <Text style={styles.infoText}>
-                    Results depend on what Google has listed in your area. Some spots may be
-                    missing, have outdated hours, or inaccurate info. Ratings and prices come
-                    straight from Google. The more specific your filters, the fewer results you'll
-                    get.
-                  </Text>
-
-                  <Text style={styles.infoHeading} accessibilityRole="header">
-                    Your Location
-                  </Text>
-                  <Text style={styles.infoText}>
-                    Your location is used only to find nearby spots. It's temporarily cached on your
-                    device, expires after 1 hour, and is never sent to our servers.
-                  </Text>
-
-                  <Text
-                    style={[styles.infoHeading, { color: THEME.pop }]}
-                    accessibilityRole="header"
-                  >
-                    Your Stuff
-                  </Text>
-                  <Text style={styles.infoText}>
-                    {'\u2022'} Tap the heart on a result to save favorites{'\n'}
-                    {'\u2022'} Tap "Never Again" to permanently block a place{'\n'}
-                    {'\u2022'} Use "Spots" to add your own places (like Mom's house) to the random
-                    pool{'\n'}
-                    {'\u2022'} Tap "More Like This" to instantly search for more of the same cuisine
-                    - if ForkIt! picks a Thai place, it'll find other Thai spots nearby{'\n'}
-                    {'\u2022'} Your favorites, blocked list, and custom spots are saved on your
-                    device
-                  </Text>
-
-                  <Text style={styles.infoHeading} accessibilityRole="header">
-                    Free & Pro
-                  </Text>
-                  <Text style={styles.infoText}>
-                    ForkIt! is free to use with 20 searches per month and 1 Fork Around group
-                    session. Each search loads a pool of nearby restaurants — tap as many times as
-                    you want to re-roll within that pool at no cost. A new search only counts when
-                    your filters change or the pool expires (4 hours).{'\n\n'}
-                    ForkIt! Pro ({PRO_PRICE_LABEL}) removes all limits — unlimited searches and Fork
-                    Around sessions. Free searches reset on the 1st of each month.
-                  </Text>
-
-                  <Text
-                    style={[styles.infoHeading, { color: THEME.pop }]}
-                    accessibilityRole="header"
-                  >
-                    Coming Soon
-                  </Text>
-                  <Text style={styles.infoText}>
-                    {'\u2022'} Picky Eater Mode - dietary filters for allergies, preferences, and
-                    restrictions{'\n'}
-                    {'\u2022'} History & Stats - your ForkIt! journal with a map of picks{'\n'}
-                    {'\u2022'} More to come - we're just getting started
-                  </Text>
-
-                  <View style={styles.infoSupportDivider}>
-                    <Text
-                      style={[styles.infoHeading, styles.infoSupportHeading]}
-                      accessibilityRole="header"
-                    >
-                      {'\u2615'} Support ForkIt!
-                    </Text>
-                    <Text style={styles.infoText}>
-                      Born in the heat of a dinner battle royale. Maintained by coffee. If ForkIt!
-                      saved you from the "I don't know" spiral, contribute to the addiction.
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setShowInfo(false);
-                        setTimeout(() => setShowSupport(true), SUPPORT_MODAL_DELAY);
-                      }}
-                      style={[
-                        styles.supportBtn,
-                        {
-                          backgroundColor: THEME.accentBg,
-                          borderColor: THEME.accentBorder,
-                        },
-                        styles.infoSupportBtnWrap,
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel="Open support options"
-                    >
-                      <Ionicons name="cafe" size={16} color={THEME.accent} />
-                      <Text style={[styles.supportBtnText, { color: THEME.accent }]}>
-                        Support ForkIt!
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <Text
-                    style={styles.privacyLink}
-                    onPress={() =>
-                      Linking.openURL('https://cherrelletucker.github.io/forkit/privacy.html')
-                    }
-                    accessibilityRole="link"
-                  >
-                    Privacy Policy
-                  </Text>
-
-                  <Text
-                    style={styles.versionText}
-                    onPress={() => {
-                      easterEggTaps.current += 1;
-                      if (easterEggTaps.current >= EASTER_EGG_TAPS) {
-                        easterEggTaps.current = 0;
-                        setShowInfo(false);
-                        openMapsSearchByText('88 Buffet Huntsville AL');
-                      }
-                    }}
-                    suppressHighlighting
-                  >
-                    v1.1.0
-                  </Text>
-                </ScrollView>
-                {infoScrollVisible && (
-                  <View style={styles.scrollTrack}>
-                    <View
-                      style={[
-                        styles.scrollThumb,
-                        { top: `${infoScrollRatio * SCROLL_THUMB_PERCENT}%` },
-                      ]}
-                    />
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-        </Modal>
+          onClose={() => setShowInfo(false)}
+          isPro={isPro()}
+          showPaywall={showPaywall}
+          showToast={showToast}
+          startTour={startTour}
+        />
 
         {/* Fork Around Modal */}
         <GroupForkModal
-          visible={showGroupModal}
-          onClose={closeGroupModal}
-          groupStep={groupStep}
-          groupCode={groupCode}
-          groupName={groupName}
-          setGroupName={setGroupName}
-          groupJoinCode={groupJoinCode}
-          setGroupJoinCode={setGroupJoinCode}
-          groupLocationName={groupLocationName}
-          setGroupLocationName={setGroupLocationName}
-          groupHostName={groupHostName}
-          groupHostRadius={groupHostRadius}
-          savedLocations={savedLocations}
-          saveLocation={saveLocation}
-          deleteSavedLocation={deleteSavedLocation}
+          visible={group.showGroupModal}
+          onClose={group.closeGroupModal}
+          groupStep={group.groupStep}
+          groupCode={group.groupCode}
+          groupName={group.groupName}
+          setGroupName={group.setGroupName}
+          groupJoinCode={group.groupJoinCode}
+          setGroupJoinCode={group.setGroupJoinCode}
+          groupLocationName={group.groupLocationName}
+          setGroupLocationName={group.setGroupLocationName}
+          groupHostName={group.groupHostName}
+          groupHostRadius={group.groupHostRadius}
           customPlaces={customPlaces}
           setCustomPlaces={setCustomPlaces}
-          groupParticipants={groupParticipants}
-          groupResult={groupResult}
-          groupLoading={groupLoading}
-          groupError={groupError}
-          groupFiltersSubmitted={groupFiltersSubmitted}
-          groupCreate={groupCreate}
-          groupJoin={groupJoin}
-          groupSubmitFilters={groupSubmitFilters}
-          groupTriggerPick={groupTriggerPick}
-          groupLeave={groupLeave}
+          groupParticipants={group.groupParticipants}
+          groupResult={group.groupResult}
+          groupLoading={group.groupLoading}
+          groupError={group.groupError}
+          groupFiltersSubmitted={group.groupFiltersSubmitted}
+          groupEditFilters={group.groupEditFilters}
+          groupCreate={group.groupCreate}
+          groupJoin={group.groupJoin}
+          groupSubmitFilters={group.groupSubmitFilters}
+          groupTriggerPick={group.groupTriggerPick}
+          groupLeave={group.groupLeave}
+          groupPollStale={group.groupPollStale}
+          isHost={!!group.groupHostId}
+          canHost={isPro() || getCurrentUsage().group < 1}
+          showPaywall={showPaywall}
         />
 
-        {/* Support Modal */}
-        <Modal
-          visible={showSupport}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowSupport(false)}
-          statusBarTranslucent
-        >
-          <View style={styles.infoOverlay} accessibilityViewIsModal>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={() => setShowSupport(false)}
-              accessibilityLabel="Close support"
-              accessibilityRole="button"
-            />
-            <View style={styles.infoCard} accessibilityRole="none">
-              <TouchableOpacity
-                style={styles.infoClose}
-                onPress={() => setShowSupport(false)}
-                accessibilityLabel="Close"
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={22} color={THEME.textIcon} />
-              </TouchableOpacity>
-
-              <Text
-                style={[styles.infoHeading, styles.supportHeadingCenter]}
-                accessibilityRole="header"
-              >
-                Support ForkIt!
-              </Text>
-              <Text style={[styles.infoText, styles.supportSubCenter]}>
-                Born in the heat of a dinner battle royale. Maintained by coffee.{'\n'}
-                <Text style={styles.supportHighlight}>Contribute to the addiction?</Text>
-              </Text>
-
-              <TouchableOpacity
-                style={[styles.supportBtn, { backgroundColor: THEME.venmo }]}
-                onPress={() => Linking.openURL('https://venmo.com/Cherrelle-Tucker')}
-                accessibilityRole="link"
-                accessibilityLabel="Support via Venmo"
-              >
-                <Text style={styles.supportBtnIcon}>V</Text>
-                <Text style={styles.supportBtnText}>Venmo</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.supportBtn, { backgroundColor: THEME.cashApp }]}
-                onPress={() => Linking.openURL('https://cash.app/$CherrelleJTucker')}
-                accessibilityRole="link"
-                accessibilityLabel="Support via Cash App"
-              >
-                <Text style={styles.supportBtnIcon}>$</Text>
-                <Text style={styles.supportBtnText}>Cash App</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.supportBtn, { backgroundColor: THEME.kofi }]}
-                onPress={() => Linking.openURL('https://ko-fi.com/ctucker')}
-                accessibilityRole="link"
-                accessibilityLabel="Support via Ko-fi"
-              >
-                <Text style={styles.supportBtnIcon}>{'\u2615'}</Text>
-                <Text style={styles.supportBtnText}>Ko-fi</Text>
-              </TouchableOpacity>
-
-              <View style={styles.supportFooterRow}>
-                <Text style={styles.supportBrandText}>ForkIt</Text>
-                <ForkIcon size={16} color={THEME.accent} />
-              </View>
-            </View>
-          </View>
-        </Modal>
-
         {/* Favorites Modal */}
-        <Modal
+        <FavoritesModal
           visible={showFavorites}
-          transparent
-          animationType="fade"
-          onRequestClose={() => {
-            setShowFavorites(false);
-            setExpandedFavId(null);
-            setEditingFavId(null);
-          }}
-          statusBarTranslucent
-        >
-          <View style={styles.infoOverlay} accessibilityViewIsModal>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={() => {
-                setShowFavorites(false);
-                setExpandedFavId(null);
-                setEditingFavId(null);
-              }}
-              accessibilityLabel="Close favorites"
-              accessibilityRole="button"
-            />
-            <View style={styles.listCard}>
-              <TouchableOpacity
-                style={styles.infoClose}
-                onPress={() => {
-                  setShowFavorites(false);
-                  setExpandedFavId(null);
-                  setEditingFavId(null);
-                }}
-                accessibilityLabel="Close"
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={22} color={THEME.textIcon} />
-              </TouchableOpacity>
-              <Text style={[styles.infoHeading, styles.marginTopNone]} accessibilityRole="header">
-                Favorites ({favorites.length})
-              </Text>
-              <ScrollView
-                style={styles.modalListHeight}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
-                {favorites.length === 0 ? (
-                  <Text style={styles.infoText}>
-                    No favorites yet. Tap the heart on a result to save it.
-                  </Text>
-                ) : (
-                  favorites.map((fav) => {
-                    const isExpanded = expandedFavId === fav.place_id;
-                    const isEditing = editingFavId === fav.place_id;
-                    return (
-                      <View key={fav.place_id} style={[styles.listItem, styles.listItemColumn]}>
-                        {/* Collapsed row — always visible */}
-                        <TouchableOpacity
-                          onPress={() => {
-                            setExpandedFavId(isExpanded ? null : fav.place_id);
-                            setEditingFavId(null);
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${isExpanded ? 'Collapse' : 'Expand'} ${fav.name}`}
-                        >
-                          <View style={styles.rowCenter}>
-                            <View style={styles.flex1}>
-                              <Text style={styles.listItemName}>{fav.name}</Text>
-                              <Text style={styles.listItemSub}>
-                                {fav.rating ? `${fav.rating} \u2605` : ''}
-                                {fav.vicinity ? ` \u00B7 ${fav.vicinity}` : ''}
-                              </Text>
-                              {!isExpanded && fav.userNotes ? (
-                                <Text
-                                  style={[styles.listItemSub, styles.fontItalic]}
-                                  numberOfLines={1}
-                                >
-                                  {fav.userNotes}
-                                </Text>
-                              ) : null}
-                            </View>
-                            <Ionicons
-                              name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                              size={16}
-                              color={THEME.textFaint}
-                            />
-                          </View>
-                        </TouchableOpacity>
-
-                        {/* Expanded detail */}
-                        {isExpanded && (
-                          <View style={styles.favDetailSection}>
-                            {/* Notes & dishes — edit or read-only */}
-                            {isEditing ? (
-                              <View style={styles.marginTop8}>
-                                <View style={styles.inputWrap}>
-                                  <Ionicons
-                                    name="chatbubble-outline"
-                                    size={14}
-                                    color={THEME.textHalf}
-                                  />
-                                  <TextInput
-                                    value={editNotes}
-                                    onChangeText={setEditNotes}
-                                    placeholder="Personal notes..."
-                                    placeholderTextColor={THEME.textHint}
-                                    style={[styles.input, styles.fontSize12]}
-                                    accessibilityLabel="Personal notes for this favorite"
-                                    keyboardAppearance="dark"
-                                    multiline
-                                  />
-                                </View>
-                                <View style={[styles.inputWrap, styles.inputMarginTop6]}>
-                                  <Ionicons
-                                    name="restaurant-outline"
-                                    size={14}
-                                    color={THEME.textHalf}
-                                  />
-                                  <TextInput
-                                    value={editDishes}
-                                    onChangeText={setEditDishes}
-                                    placeholder="What to order..."
-                                    placeholderTextColor={THEME.textHint}
-                                    style={[styles.input, styles.fontSize12]}
-                                    accessibilityLabel="Dishes to order at this favorite"
-                                    keyboardAppearance="dark"
-                                    multiline
-                                  />
-                                </View>
-                                <TouchableOpacity
-                                  style={[styles.addBtn, styles.editSaveBtn]}
-                                  onPress={() => {
-                                    updateFavorite(
-                                      fav.place_id,
-                                      {
-                                        userNotes: editNotes.trim(),
-                                        userDishes: editDishes.trim(),
-                                      },
-                                      favorites,
-                                      setFavorites,
-                                    );
-                                    setEditingFavId(null);
-                                    showToast('Saved!', 'success', TOAST_SHORT);
-                                  }}
-                                  accessibilityRole="button"
-                                  accessibilityLabel="Save notes"
-                                >
-                                  <Ionicons name="checkmark" size={16} color={THEME.white} />
-                                  <Text style={styles.addBtnText}>Save</Text>
-                                </TouchableOpacity>
-                              </View>
-                            ) : (
-                              <View style={styles.marginTop8}>
-                                {fav.userNotes ? (
-                                  <Text style={styles.favDetailText}>
-                                    <Text style={styles.favDetailLabel}>Notes: </Text>
-                                    {fav.userNotes}
-                                  </Text>
-                                ) : null}
-                                {fav.userDishes ? (
-                                  <Text style={styles.favDetailText}>
-                                    <Text style={styles.favDetailLabel}>Order: </Text>
-                                    {fav.userDishes}
-                                  </Text>
-                                ) : null}
-                              </View>
-                            )}
-
-                            {/* Action buttons */}
-                            <View style={styles.favActionRow}>
-                              <TouchableOpacity
-                                onPress={() => openMapsSearchByText(fav.vicinity || fav.name)}
-                                style={styles.favActionBtn}
-                                accessibilityLabel={`Directions to ${fav.name}`}
-                                accessibilityRole="button"
-                              >
-                                <Ionicons name="map-outline" size={16} color={THEME.pop} />
-                                <Text style={styles.favActionBtnText}>Directions</Text>
-                              </TouchableOpacity>
-                              {!isEditing && (
-                                <TouchableOpacity
-                                  onPress={() => {
-                                    setEditNotes(fav.userNotes || '');
-                                    setEditDishes(fav.userDishes || '');
-                                    setEditingFavId(fav.place_id);
-                                  }}
-                                  style={styles.favActionBtn}
-                                  accessibilityLabel={`Edit notes for ${fav.name}`}
-                                  accessibilityRole="button"
-                                >
-                                  <Ionicons
-                                    name="pencil-outline"
-                                    size={16}
-                                    color={THEME.textSubtle}
-                                  />
-                                </TouchableOpacity>
-                              )}
-                              <TouchableOpacity
-                                onPress={() => {
-                                  showAlert(
-                                    'Remove Favorite',
-                                    `Remove "${fav.name}" from favorites?`,
-                                    [
-                                      { text: 'Cancel', style: 'cancel' },
-                                      {
-                                        text: 'Remove',
-                                        style: 'destructive',
-                                        onPress: () => {
-                                          toggleFavorite(fav, favorites, setFavorites);
-                                          setExpandedFavId(null);
-                                          showToast(
-                                            'Removed from favorites.',
-                                            'success',
-                                            TOAST_SHORT,
-                                          );
-                                        },
-                                      },
-                                    ],
-                                  );
-                                }}
-                                style={styles.favActionBtn}
-                                accessibilityLabel={`Remove ${fav.name}`}
-                                accessibilityRole="button"
-                              >
-                                <Ionicons
-                                  name="heart-dislike-outline"
-                                  size={16}
-                                  color={THEME.accent}
-                                />
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })
-                )}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+          onClose={() => setShowFavorites(false)}
+          favorites={favorites}
+          setFavorites={setFavorites}
+          showToast={showToast}
+        />
 
         {/* Blocked Places Modal */}
-        <Modal
+        <BlockedModal
           visible={showBlocked}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowBlocked(false)}
-          statusBarTranslucent
-        >
-          <View style={styles.infoOverlay} accessibilityViewIsModal>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={() => setShowBlocked(false)}
-              accessibilityLabel="Close blocked list"
-              accessibilityRole="button"
-            />
-            <View style={styles.listCard}>
-              <TouchableOpacity
-                style={styles.infoClose}
-                onPress={() => setShowBlocked(false)}
-                accessibilityLabel="Close"
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={22} color={THEME.textIcon} />
-              </TouchableOpacity>
-              <Text style={[styles.infoHeading, styles.marginTopNone]} accessibilityRole="header">
-                Blocked ({blockedIds.length})
-              </Text>
-              <ScrollView style={styles.modalListHeight} showsVerticalScrollIndicator={false}>
-                {blockedIds.length === 0 ? (
-                  <Text style={styles.infoText}>No blocked restaurants.</Text>
-                ) : (
-                  blockedIds.map((b) => (
-                    <View key={b.place_id} style={styles.listItem}>
-                      <Text style={[styles.listItemName, styles.blockedItemName]}>{b.name}</Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          unblockPlace(b.place_id, blockedIds, setBlockedIds);
-                          showToast(`Unblocked ${b.name}.`, 'success', TOAST_SHORT);
-                        }}
-                        accessibilityLabel={`Unblock ${b.name}`}
-                        accessibilityRole="button"
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="close-circle-outline" size={20} color={THEME.muted} />
-                      </TouchableOpacity>
-                    </View>
-                  ))
-                )}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+          onClose={() => setShowBlocked(false)}
+          blockedIds={blockedIds}
+          setBlockedIds={setBlockedIds}
+          showToast={showToast}
+        />
 
         {/* Custom Places Modal */}
-        <Modal
+        <CustomPlacesModal
           visible={showCustomPlaces}
-          transparent
-          animationType="fade"
-          onRequestClose={() => {
-            setShowCustomPlaces(false);
-            setSpotsSearch('');
-            setSpotsMsg(null);
-            setAddressSuggestions([]);
-          }}
-          statusBarTranslucent
-        >
-          <View style={styles.infoOverlay} accessibilityViewIsModal>
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={() => {
-                setShowCustomPlaces(false);
-                setSpotsSearch('');
-                setSpotsMsg(null);
-                setAddressSuggestions([]);
-              }}
-              accessibilityLabel="Close your spots"
-              accessibilityRole="button"
-            />
-            <View style={styles.listCard}>
-              <TouchableOpacity
-                style={styles.infoClose}
-                onPress={() => {
-                  setShowCustomPlaces(false);
-                  setSpotsSearch('');
-                  setSpotsMsg(null);
-                  setAddressSuggestions([]);
-                }}
-                accessibilityLabel="Close"
-                accessibilityRole="button"
-              >
-                <Ionicons name="close" size={22} color={THEME.textIcon} />
-              </TouchableOpacity>
-              <Text style={[styles.infoHeading, styles.marginTopNone]} accessibilityRole="header">
-                Your Spots ({customPlaces.length})
-              </Text>
-
-              <View style={styles.customForm}>
-                {spotsMsg && (
-                  <Text
-                    style={[
-                      styles.spotsMsg,
-                      { color: spotsMsg.type === 'error' ? THEME.error : THEME.pop },
-                    ]}
-                  >
-                    {spotsMsg.text}
-                  </Text>
-                )}
-                <View style={styles.inputWrap}>
-                  <Ionicons name="restaurant-outline" size={16} color={THEME.textSubtle} />
-                  <TextInput
-                    value={newCustomName}
-                    onChangeText={(t) => {
-                      setNewCustomName(t);
-                      setSpotsMsg(null);
-                    }}
-                    placeholder="Name (e.g. Mom's house)"
-                    accessibilityLabel="Name of your custom spot"
-                    placeholderTextColor={THEME.textFaint}
-                    style={styles.input}
-                    keyboardAppearance="dark"
-                    returnKeyType="next"
-                  />
-                </View>
-                <View style={styles.addressFieldWrap}>
-                  <View style={styles.inputWrap}>
-                    <Ionicons name="location-outline" size={16} color={THEME.textSubtle} />
-                    <TextInput
-                      value={newCustomAddress}
-                      accessibilityLabel="Address of your custom spot"
-                      onChangeText={(text) => {
-                        setNewCustomAddress(text);
-                        if (addressDebounceRef.current) clearTimeout(addressDebounceRef.current);
-                        if (text.trim().length >= 3) {
-                          addressDebounceRef.current = setTimeout(async () => {
-                            const { suggestions, error } = await fetchAddressSuggestions(
-                              text,
-                              coords,
-                            );
-                            setAddressSuggestions(suggestions);
-                            if (error === 'rate_limit') {
-                              setSpotsMsg({
-                                type: 'error',
-                                text: 'Slow down — too many requests. Wait a moment.',
-                              });
-                              setTimeout(() => setSpotsMsg(null), SPOTS_ERROR_TOAST_MS);
-                            }
-                          }, DEBOUNCE_DELAY);
-                        } else {
-                          setAddressSuggestions([]);
-                        }
-                      }}
-                      placeholder="Address (optional)"
-                      placeholderTextColor={THEME.textFaint}
-                      style={styles.input}
-                      keyboardAppearance="dark"
-                      returnKeyType="next"
-                    />
-                  </View>
-                  {addressSuggestions.length > 0 && (
-                    <View style={styles.suggestionsDropdown}>
-                      {addressSuggestions.map((s) => (
-                        <TouchableOpacity
-                          key={s.placeId}
-                          style={styles.suggestionItem}
-                          onPress={() => {
-                            setNewCustomAddress(s.description);
-                            setAddressSuggestions([]);
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel={s.description}
-                        >
-                          <Ionicons
-                            name="location"
-                            size={13}
-                            color={THEME.accent}
-                            style={styles.suggestionIconWrap}
-                          />
-                          <View style={styles.flex1}>
-                            <Text style={styles.suggestionMain}>{s.mainText}</Text>
-                            {s.secondaryText ? (
-                              <Text style={styles.suggestionSub}>{s.secondaryText}</Text>
-                            ) : null}
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-                <View style={[styles.inputWrap, styles.spotInputMarginTop8]}>
-                  <Ionicons name="chatbubble-outline" size={16} color={THEME.textSubtle} />
-                  <TextInput
-                    value={newCustomNotes}
-                    onChangeText={setNewCustomNotes}
-                    placeholder="Notes (optional)"
-                    accessibilityLabel="Notes for your custom spot"
-                    placeholderTextColor={THEME.textFaint}
-                    style={styles.input}
-                    keyboardAppearance="dark"
-                    returnKeyType="done"
-                  />
-                </View>
-                <TouchableOpacity
-                  onPress={() => {
-                    const result = addCustomPlace(newCustomName, newCustomAddress, {
-                      notes: newCustomNotes,
-                      currentCustom: customPlaces,
-                      setCustom: setCustomPlaces,
-                    });
-                    if (result.ok) {
-                      setNewCustomName('');
-                      setNewCustomAddress('');
-                      setNewCustomNotes('');
-                      setAddressSuggestions([]);
-                      setSpotsMsg({ type: 'success', text: 'Added!' });
-                      setTimeout(() => setSpotsMsg(null), ADDED_TOAST_MS);
-                    } else if (result.dupe) {
-                      const dupeMsg =
-                        result.reason === 'address'
-                          ? `Not saved — address is already in your spots under "${result.dupe}".`
-                          : `Not saved — "${result.dupe}" is already in your spots${result.dupeAddr ? ` at ${result.dupeAddr}` : ''}.`;
-                      setSpotsMsg({ type: 'error', text: dupeMsg });
-                    }
-                  }}
-                  disabled={!newCustomName.trim()}
-                  style={[styles.addBtn, !newCustomName.trim() && styles.opacity05]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add spot"
-                >
-                  <Ionicons name="add" size={18} color={THEME.white} />
-                  <Text style={styles.addBtnText}>Add Spot</Text>
-                </TouchableOpacity>
-              </View>
-
-              {customPlaces.length > SPOTS_SEARCH_THRESHOLD && (
-                <View style={[styles.inputWrap, styles.spotsSearchWrap]}>
-                  <Ionicons name="search" size={14} color={THEME.textHalf} />
-                  <TextInput
-                    value={spotsSearch}
-                    onChangeText={setSpotsSearch}
-                    placeholder="Search your spots..."
-                    accessibilityLabel="Search your custom spots"
-                    placeholderTextColor={THEME.textHint}
-                    style={[styles.input, styles.fontSize12]}
-                    keyboardAppearance="dark"
-                    returnKeyType="done"
-                  />
-                </View>
-              )}
-              <ScrollView
-                style={styles.modalSpotsHeight}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-              >
-                {customPlaces
-                  .filter((cp) => {
-                    if (!spotsSearch.trim()) return true;
-                    const q = normalize(spotsSearch);
-                    return (
-                      normalize(cp.name).includes(q) ||
-                      normalize(cp.vicinity || '').includes(q) ||
-                      normalize(cp.notes || '').includes(q)
-                    );
-                  })
-                  .map((cp) => (
-                    <View key={cp.place_id} style={styles.listItem}>
-                      <View style={styles.flex1}>
-                        <Text style={styles.listItemName}>{cp.name}</Text>
-                        {cp.vicinity ? <Text style={styles.listItemSub}>{cp.vicinity}</Text> : null}
-                        {cp.notes ? (
-                          <Text style={[styles.listItemSub, styles.fontItalic]}>{cp.notes}</Text>
-                        ) : null}
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => {
-                          showAlert('Remove Spot', `Remove "${cp.name}" from your spots?`, [
-                            {
-                              text: 'Remove',
-                              style: 'destructive',
-                              onPress: () => {
-                                removeCustomPlace(cp.place_id, customPlaces, setCustomPlaces);
-                                showToast(`Removed ${cp.name}.`, 'success', TOAST_SHORT);
-                              },
-                            },
-                            { text: 'Cancel', style: 'cancel' },
-                          ]);
-                        }}
-                        accessibilityLabel={`Remove ${cp.name}`}
-                        accessibilityRole="button"
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="trash-outline" size={18} color={THEME.muted} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+          onClose={() => setShowCustomPlaces(false)}
+          customPlaces={customPlaces}
+          setCustomPlaces={setCustomPlaces}
+          coords={coords}
+          showToast={showToast}
+        />
         <Toast text={toast.text} kind={toast.kind} />
       </LinearGradient>
     </SafeAreaView>
@@ -4609,9 +1528,9 @@ export default function App() {
 // ==============================
 
 const styles = StyleSheet.create({
-  container: { padding: scale(14), paddingTop: scale(30), paddingBottom: scale(20) },
+  container: { padding: scale(16), paddingTop: scale(34), paddingBottom: scale(24) },
 
-  header: { alignItems: 'center', marginBottom: scale(10), marginTop: scale(16) },
+  header: { alignItems: 'center', marginBottom: scale(12), marginTop: scale(18) },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   title: {
     color: THEME.accent,
@@ -4623,70 +1542,61 @@ const styles = StyleSheet.create({
   titleIt: { color: THEME.pop },
   subtitle: {
     color: THEME.textHint,
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 2.5,
     textAlign: 'center',
-    marginTop: 2,
+    marginTop: 3,
   },
-
-  toastWrap: {
-    position: 'absolute',
-    top: '45%',
-    left: 0,
-    right: 0,
-    zIndex: 1100,
-    alignItems: 'center',
-  },
-  toast: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: THEME.toastBg,
-    borderWidth: 1,
-    borderColor: THEME.borderFaint,
-  },
-  toastText: { color: THEME.textPrimary, fontWeight: '900' },
 
   hero: {
-    padding: scale(12),
+    padding: scale(14),
     borderRadius: 18,
-    marginBottom: scale(10),
+    marginBottom: scale(12),
     borderWidth: 1,
     borderColor: THEME.borderFaint,
     backgroundColor: THEME.surfaceLight,
   },
-  heroLine: { color: THEME.textBold, fontSize: 14, lineHeight: 18, marginBottom: 12 },
+  heroLine: { color: THEME.textBold, fontSize: 16, lineHeight: 22, marginBottom: 14 },
   heroBold: { color: THEME.white, fontWeight: '900' },
 
-  primaryBtn: {
-    borderRadius: 14,
-    paddingVertical: scale(12),
-    paddingHorizontal: scale(12),
+  forkingLine: {
+    marginTop: 12,
+    color: THEME.textNearWhite,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  groupFiltersHint: {
+    color: THEME.textHint,
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  activeSessionBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 48,
+    gap: 10,
+    backgroundColor: THEME.pop,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    marginTop: 12,
   },
-  primaryText: { color: THEME.white, fontWeight: '900', fontSize: 16 },
-
-  forkingLine: {
-    marginTop: 10,
-    color: THEME.textNearWhite,
-    fontSize: 13,
-    fontWeight: '900',
+  activeSessionText: {
+    color: THEME.white,
+    fontSize: 15,
+    fontWeight: '700',
   },
   filtersToggle: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    marginTop: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: THEME.borderLight,
@@ -4694,91 +1604,43 @@ const styles = StyleSheet.create({
   },
   filtersToggleText: {
     color: THEME.textBright,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '900',
-    marginLeft: 8,
+    marginLeft: 10,
   },
   filterCount: {
     color: THEME.pop,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '800',
-    marginLeft: 10,
+    marginLeft: 12,
   },
   filtersContent: {
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: 14,
+    paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: THEME.borderThin,
   },
 
   slotBox: {
-    marginTop: 12,
-    padding: 12,
+    marginTop: 14,
+    padding: 14,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: THEME.borderFaint,
     backgroundColor: THEME.surfaceInput,
   },
-  slotLabel: { color: THEME.textIcon, fontSize: 12, fontWeight: '800' },
-  slotText: { marginTop: 6, color: THEME.textPrimary, fontSize: 14, fontWeight: '950' },
+  slotLabel: { color: THEME.textIcon, fontSize: 14, fontWeight: '800' },
+  slotText: { marginTop: 7, color: THEME.textPrimary, fontSize: 16, fontWeight: '950' },
 
-  cardOuter: {
-    borderRadius: 18,
-    marginBottom: scale(10),
-    shadowColor: THEME.black,
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
-  },
-  cardOuterAccent: {
-    shadowColor: THEME.accent,
-    shadowOpacity: 0.4,
-  },
-  card: {
-    borderRadius: 18,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: THEME.borderMedium,
-    backgroundColor: THEME.accentBg,
-    overflow: 'hidden',
-  },
-  cardContent: {
-    backgroundColor: THEME.surfaceCard,
-    borderRadius: 14,
-    padding: scale(14),
-  },
-  cardAccent: {
-    borderColor: THEME.accentBorder,
-    backgroundColor: THEME.accentBgLight,
-  },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  cardTitle: { color: THEME.white, fontSize: 16, fontWeight: '900' },
-
-  label: { color: THEME.textSecondary, fontSize: 12, marginTop: 10, marginBottom: 6 },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 7,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
-    minHeight: 34,
-  },
-  chipIdle: { backgroundColor: THEME.surfaceLight, borderColor: THEME.borderLight },
-  chipActive: { backgroundColor: THEME.accentChip, borderColor: THEME.accent },
-  chipText: { fontSize: 11, fontWeight: '900' },
-  chipTextIdle: { color: THEME.textBold },
-  chipTextActive: { color: THEME.white },
+  label: { color: THEME.textSecondary, fontSize: 14, marginTop: 12, marginBottom: 7 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
 
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: THEME.borderMedium,
@@ -4792,63 +1654,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 10,
   },
-  toggleLabel: { color: THEME.textSecondary, fontSize: 12, fontWeight: '900' },
+  toggleLabel: { color: THEME.textSecondary, fontSize: 14, fontWeight: '900' },
 
   clearBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 999,
     backgroundColor: THEME.surfaceClearBtn,
     borderWidth: 1,
     borderColor: THEME.borderHover,
   },
-  clearBtnText: { color: THEME.textBright, fontSize: 11, fontWeight: '900' },
+  clearBtnText: { color: THEME.textBright, fontSize: 13, fontWeight: '900' },
 
   placeName: {
     color: THEME.white,
-    fontSize: scale(20),
+    fontSize: scale(24),
     fontWeight: '950',
-    marginTop: 2,
-    marginBottom: scale(8),
+    marginTop: 3,
+    marginBottom: scale(10),
   },
 
-  metaRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: scale(6), marginBottom: scale(10) },
+  metaRow: { flexDirection: 'row', flexWrap: 'nowrap', gap: scale(7), marginBottom: scale(12) },
   metaPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 15,
+    gap: 5,
+    paddingVertical: 9,
+    paddingHorizontal: 16,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: THEME.borderMedium,
     backgroundColor: THEME.surfaceLight,
     flexShrink: 1,
   },
-  metaText: { color: THEME.textBold, fontWeight: '700', fontSize: 11 },
+  metaText: { color: THEME.textBold, fontWeight: '700', fontSize: 13 },
 
   actionRow: { flexDirection: 'row', gap: scale(8), flexWrap: 'wrap' },
-  ghostBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: scale(10),
-    paddingHorizontal: scale(10),
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: THEME.pop,
-    backgroundColor: THEME.transparent,
-    flexGrow: 1,
-    minHeight: 44,
-  },
-  ghostText: { color: THEME.textAlmostWhite, fontWeight: '900' },
-
   divider: { height: 1, backgroundColor: THEME.borderFaint, marginVertical: scale(10) },
 
-  sectionTitle: { color: THEME.white, fontSize: 14, fontWeight: '950', marginBottom: 6 },
-  muted: { color: THEME.textSubtle, fontSize: 13, lineHeight: 18 },
+  sectionTitle: { color: THEME.white, fontSize: 16, fontWeight: '950', marginBottom: 7 },
+  muted: { color: THEME.textSubtle, fontSize: 15, lineHeight: 22 },
 
   linkRow: {
     flexDirection: 'row',
@@ -4863,62 +1710,69 @@ const styles = StyleSheet.create({
     marginBottom: scale(8),
   },
   linkText: { color: THEME.textPrimary, fontWeight: '950', marginLeft: 10 },
-  attribution: { color: THEME.textDimmed, fontSize: 11, textAlign: 'right', marginTop: 8 },
+  attribution: { color: THEME.textDimmed, fontSize: 13, textAlign: 'right', marginTop: 10 },
 
   footer: {
-    marginTop: 6,
+    marginTop: 7,
     textAlign: 'center',
     color: THEME.textHalf,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 14,
+    lineHeight: 19,
   },
-  footerRow: { alignItems: 'center', marginTop: 4, marginBottom: 8 },
-  infoOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: THEME.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-  },
-  infoCard: {
-    backgroundColor: THEME.surfaceModal,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: THEME.borderSubtle,
-    padding: 24,
-    marginHorizontal: 24,
-    maxWidth: 380,
-    width: '90%',
-  },
-  infoClose: { position: 'absolute', top: 12, right: 12, zIndex: 1 },
-  infoHeading: {
-    color: THEME.accent,
-    fontSize: 15,
-    fontWeight: '900',
-    marginTop: 14,
+  resultSectionHeader: {
+    color: THEME.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: 20,
     marginBottom: 4,
   },
-  infoText: { color: THEME.textSecondary, fontSize: 13, fontWeight: '600', lineHeight: 19 },
-  scrollTrack: {
-    width: 4,
-    backgroundColor: THEME.borderDim,
-    borderRadius: 2,
-    marginLeft: 8,
-    marginTop: 30,
+  resultCard: {
+    borderWidth: 1.5,
+    borderColor: THEME.popBorder,
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
   },
-  scrollThumb: {
-    position: 'absolute',
-    width: 4,
-    height: '30%',
-    backgroundColor: THEME.popThumb,
-    borderRadius: 2,
+  resultCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 6,
   },
+  resultCardName: {
+    color: THEME.white,
+    fontSize: 17,
+    fontWeight: '900',
+    flex: 1,
+  },
+  resultCardMeta: {
+    color: THEME.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  resultCardCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: THEME.popBg,
+    borderWidth: 1,
+    borderColor: THEME.popBorder,
+  },
+  resultCardCtaText: {
+    color: THEME.pop,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  footerRow: { alignItems: 'center', marginTop: 4, marginBottom: 8 },
 
-  // Favorites, Block, Custom Places
+  // Result card action rows
   actionRow2: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4936,141 +1790,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 7,
     flex: 1,
-    paddingVertical: scale(8),
-    paddingHorizontal: scale(10),
-    borderRadius: 12,
+    paddingVertical: scale(10),
+    paddingHorizontal: scale(12),
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: THEME.popBorder,
     backgroundColor: THEME.popBg,
-    minHeight: 44,
+    minHeight: 48,
   },
-  moreLikeBtnText: { color: THEME.pop, fontSize: 12, fontWeight: '900' },
-  listCard: {
-    backgroundColor: THEME.surfaceModal,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: THEME.borderSubtle,
-    padding: 24,
-    marginHorizontal: 24,
-    maxWidth: 380,
-    width: '90%',
-  },
-  listItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.borderDim,
-  },
-  listItemName: { color: THEME.textPrimary, fontSize: 14, fontWeight: '800' },
-  listItemSub: { color: THEME.textMuted, fontSize: 12, marginTop: 2 },
-  featurePills: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 14,
-  },
+  moreLikeBtnText: { color: THEME.pop, fontSize: 14, fontWeight: '900' },
   footerIcons: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16 },
-  supportBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-  supportBtnIcon: { color: THEME.white, fontSize: 18, fontWeight: '900', fontStyle: 'italic' },
-  supportBtnText: { color: THEME.white, fontSize: 15, fontWeight: '700' },
-  footerActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: THEME.surfaceHover,
-  },
-  footerActionText: { color: THEME.textSubtle, fontSize: 11, fontWeight: '800' },
   customBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: THEME.popBgMedium,
     borderWidth: 1,
     borderColor: THEME.popBorderMedium,
-    marginBottom: 6,
+    marginBottom: 7,
   },
-  customBadgeText: { color: THEME.pop, fontSize: 10, fontWeight: '800' },
-  customForm: {
-    marginVertical: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.borderDim,
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 10,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: THEME.accent,
-  },
-  addBtnText: { color: THEME.white, fontWeight: '900', fontSize: 14 },
-  suggestionsDropdown: {
-    backgroundColor: THEME.surfaceDropdown,
-    borderWidth: 1,
-    borderColor: THEME.accentBorderLight,
-    borderTopWidth: 0,
-    borderBottomLeftRadius: 10,
-    borderBottomRightRadius: 10,
-    maxHeight: 180,
-    overflow: 'hidden',
-  },
-  suggestionItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.surfaceLight,
-  },
-  suggestionMain: { color: THEME.cream, fontSize: 13, fontWeight: '700' },
-  suggestionSub: { color: THEME.muted, fontSize: 11, marginTop: 1 },
-  favDetailSection: { width: '100%', paddingTop: 10, paddingBottom: 4 },
-  favDetailLabel: { color: THEME.textMuted, fontSize: 11, fontWeight: '800' },
-  favDetailText: { color: THEME.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: 4 },
-  favActionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  favActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: THEME.borderSubtle,
-    backgroundColor: THEME.surfaceFavAction,
-  },
-  favActionBtnText: { color: THEME.textSecondary, fontSize: 11, fontWeight: '800' },
+  customBadgeText: { color: THEME.pop, fontSize: 12, fontWeight: '800' },
 
   // Extracted inline styles
   iconMarginRight6: { marginRight: 6 },
-  iconMarginRight8: { marginRight: 8 },
-  iconMarginLeft10: { marginLeft: 10 },
-  opacity07: { opacity: 0.7 },
-  opacity05: { opacity: 0.5 },
-  animatedForkWrap: { marginRight: 10 },
-  flex1: { flex: 1 },
+  flex1: { flex: 1, backgroundColor: THEME.dark },
   loadingContainer: { flex: 1, backgroundColor: THEME.dark },
   loadingCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   iconNudge: { marginLeft: -5, marginTop: -6 },
@@ -5080,445 +1829,4 @@ const styles = StyleSheet.create({
   recipeHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   sectionTitleNoMargin: { marginBottom: 0, marginLeft: 8 },
   spacer10: { height: 10 },
-  infoModalRow: { flexDirection: 'row' },
-  marginTopNone: { marginTop: 0 },
-  infoSupportDivider: {
-    borderTopWidth: 1,
-    borderTopColor: THEME.borderDim,
-    marginTop: 16,
-    paddingTop: 14,
-  },
-  infoSupportHeading: { color: THEME.cream, marginTop: 0 },
-  infoSupportBtnWrap: { borderWidth: 1, marginTop: 10 },
-  privacyLink: {
-    color: THEME.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 8,
-    textDecorationLine: 'underline',
-  },
-  versionText: { color: THEME.textHint, fontSize: 11, textAlign: 'center', marginTop: 16 },
-  supportHeadingCenter: { marginTop: 0, textAlign: 'center' },
-  supportSubCenter: { marginBottom: 18, textAlign: 'center' },
-  supportHighlight: { color: THEME.cream, fontWeight: '800' },
-  supportFooterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 14,
-  },
-  supportBrandText: { color: THEME.cream, fontSize: 13, fontWeight: '900', marginRight: 1 },
-  listItemColumn: { flexDirection: 'column', alignItems: 'stretch' },
-  fontItalic: { fontStyle: 'italic' },
-  marginTop8: { marginTop: 8 },
-  inputMarginTop6: { marginTop: 6 },
-  fontSize12: { fontSize: 12 },
-  editSaveBtn: { marginTop: 8, paddingVertical: 8 },
-  spotsMsg: { fontSize: 12, fontWeight: '700', marginBottom: 8 },
-  addressFieldWrap: { marginTop: 8, zIndex: 10 },
-  locationFieldWrap: { zIndex: 10, marginTop: 10, marginBottom: 4 },
-  customLocationRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, marginBottom: 6 },
-  customLocationPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: THEME.popBgMedium,
-    borderWidth: 1,
-    borderColor: THEME.popBorderMedium,
-    maxWidth: '100%',
-  },
-  customLocationText: { color: THEME.pop, fontSize: 12, fontWeight: '900', flexShrink: 1 },
-  suggestionIconWrap: { marginRight: 8, marginTop: 2 },
-  spotsSearchWrap: { marginTop: 10, marginBottom: 4 },
-  spotInputMarginTop8: { marginTop: 8 },
-  blockedItemName: { flex: 1 },
-  modalContentHeight: { maxHeight: SCREEN_HEIGHT * MODAL_CONTENT_RATIO },
-  modalListHeight: { maxHeight: SCREEN_HEIGHT * MODAL_LIST_RATIO },
-  modalSpotsHeight: { maxHeight: SCREEN_HEIGHT * MODAL_SPOTS_RATIO },
-
-  // Fork Around styles
-  usageHint: {
-    color: THEME.textDim,
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  usageHintAccent: {
-    color: THEME.accent,
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 6,
-  },
-  groupInput: {
-    backgroundColor: THEME.surfaceLight,
-    color: THEME.textBright,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: THEME.divider,
-    textAlign: 'center',
-  },
-  groupDivider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 18,
-  },
-  groupDividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: THEME.divider,
-  },
-  groupDividerText: {
-    color: THEME.textHint,
-    fontSize: 12,
-    marginHorizontal: 12,
-  },
-  groupCodeDisplay: {
-    color: THEME.accent,
-    fontSize: 48,
-    fontWeight: '900',
-    textAlign: 'center',
-    letterSpacing: 8,
-    marginVertical: 10,
-  },
-  groupParticipantList: {
-    marginVertical: 12,
-  },
-  groupParticipantRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.divider,
-  },
-  groupParticipantName: {
-    color: THEME.textBright,
-    fontSize: 14,
-    fontWeight: '600',
-    flex: 1,
-  },
-  groupParticipantStatus: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  groupReadyText: {
-    color: THEME.pop,
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginVertical: 8,
-  },
-  groupReadyHint: {
-    color: THEME.textDim,
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  groupError: {
-    color: THEME.accent,
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  groupHintText: {
-    color: THEME.textHint,
-    fontSize: 11,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginTop: -10,
-    marginBottom: 4,
-    opacity: 0.7,
-  },
-  groupLocationContext: {
-    color: THEME.pop,
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 8,
-    paddingHorizontal: 8,
-  },
-  groupLocSuggestions: {
-    backgroundColor: THEME.surfaceDropdown,
-    borderRadius: 8,
-    marginTop: 4,
-    overflow: 'hidden',
-  },
-  groupLocSuggestionRow: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.borderSubtle,
-  },
-  groupLocSuggestionText: {
-    color: THEME.textSecondary,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  groupLocConfirmed: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 6,
-    paddingHorizontal: 4,
-  },
-  groupLocConfirmedText: {
-    color: THEME.pop,
-    fontSize: 12,
-    fontWeight: '700',
-    flex: 1,
-  },
-  groupSaveSpotBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-    paddingHorizontal: 4,
-  },
-  groupSaveSpotText: {
-    color: THEME.pop,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  groupLeaveBtn: {
-    marginTop: 12,
-    alignSelf: 'center',
-  },
-  groupLeaveText: {
-    color: THEME.textHint,
-    fontSize: 13,
-    textDecorationLine: 'underline',
-  },
-  groupResultName: {
-    color: THEME.cream,
-    fontSize: 22,
-    fontWeight: '900',
-    textAlign: 'center',
-    marginVertical: 8,
-  },
-  groupResultDetail: {
-    color: THEME.textSubtle,
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  groupPickBtn: {
-    backgroundColor: THEME.accent,
-    marginTop: 8,
-  },
-  groupDirectionsBtn: {
-    backgroundColor: THEME.pop,
-    marginTop: 16,
-  },
-  groupFiltersWrap: {
-    marginVertical: 8,
-  },
-  groupFilterLabel: {
-    color: THEME.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 6,
-    marginTop: 10,
-  },
-  groupPillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 4,
-  },
-  groupPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: THEME.borderSubtle,
-    backgroundColor: THEME.surfaceLight,
-  },
-  groupPillActive: {
-    backgroundColor: THEME.pop,
-    borderColor: THEME.pop,
-  },
-  groupPillText: {
-    color: THEME.textSecondary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  groupPillTextActive: {
-    color: THEME.white,
-  },
-  groupScrollView: {
-    maxHeight: SCREEN_HEIGHT * MODAL_CONTENT_RATIO,
-  },
-  marginTop16: { marginTop: 16 },
-  groupHintTextLast: { marginBottom: 20 },
-  groupHostBtnGap: { marginTop: 4 },
-  groupHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'baseline',
-  },
-  groupHeaderOrange: { color: THEME.accent, marginBottom: 0 },
-  groupHeaderTeal: { color: THEME.pop, marginTop: 0, marginBottom: 0, marginLeft: 8 },
-  tourBackSpacer: { width: 50 },
-
-  // Tour styles
-  tourOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: THEME.tourOverlay,
-    zIndex: 2000,
-  },
-  tourSpotlight: {
-    position: 'absolute',
-    borderWidth: 2,
-    borderColor: THEME.tourSpotBorder,
-    backgroundColor: THEME.tourSpotBg,
-    zIndex: 2001,
-  },
-  tourTooltip: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    backgroundColor: THEME.tourCard,
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: THEME.tourCardBorder,
-    zIndex: 2002,
-    shadowColor: THEME.black,
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
-  },
-  tourTooltipCentered: {
-    top: '25%',
-  },
-  tourArrow: {
-    position: 'absolute',
-    width: 14,
-    height: 14,
-    backgroundColor: THEME.tourCard,
-    borderWidth: 1,
-    borderColor: THEME.tourCardBorder,
-    transform: [{ rotate: '45deg' }],
-  },
-  tourArrowUp: {
-    top: -8,
-    borderRightWidth: 0,
-    borderBottomWidth: 0,
-  },
-  tourArrowDown: {
-    bottom: -8,
-    borderLeftWidth: 0,
-    borderTopWidth: 0,
-  },
-  tourStepCount: {
-    fontSize: 10,
-    color: THEME.tourGold,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  tourTitle: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: THEME.white,
-    marginBottom: 6,
-  },
-  tourDesc: {
-    fontSize: 12.5,
-    color: THEME.tourText,
-    lineHeight: 19,
-    marginBottom: 10,
-  },
-  tourFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  tourDots: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  tourDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: THEME.tourDotBg,
-  },
-  tourDotActive: {
-    backgroundColor: THEME.tourGold,
-    width: 16,
-    borderRadius: 3,
-  },
-  tourBackBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  tourBackText: {
-    color: THEME.tourSkipText,
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  tourNextBtn: {
-    backgroundColor: THEME.tourBtnBg,
-    paddingHorizontal: 20,
-    paddingVertical: 9,
-    borderRadius: 999,
-  },
-  tourNextText: {
-    color: THEME.tourBtnText,
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  tourSkip: {
-    alignSelf: 'center',
-    marginTop: 8,
-  },
-  tourSkipText: {
-    fontSize: 11,
-    color: THEME.tourSkipText,
-  },
-  tourLaunchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: THEME.tourLaunchBg,
-    borderWidth: 1,
-    borderColor: THEME.tourLaunchBorder,
-    marginBottom: 14,
-  },
-  tourLaunchText: {
-    color: THEME.pop,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  tourLaunchSub: {
-    color: THEME.tourSkipText,
-    fontSize: 11,
-    fontWeight: '600',
-    marginLeft: 'auto',
-  },
 });
