@@ -4,7 +4,7 @@
 
 ForkIt! is a random restaurant picker that removes decision fatigue. One tap, one random restaurant near you, done.
 
-[Google Play](https://play.google.com/store/apps/details?id=com.ctuckersolutions.forkit) | [App Store](https://apps.apple.com/app/forkit-restaurant-picker/id6759990349) | [Web](https://forkit-web.vercel.app)
+[Google Play](https://play.google.com/store/apps/details?id=com.forkit.app) | [App Store](https://apps.apple.com/app/forkit-restaurant-picker/id6759990349) | [Web](https://forkit-web.vercel.app)
 
 ---
 
@@ -114,7 +114,7 @@ cd AppFiles && eas build --platform android --profile production
 
 ## Links
 
-- [Google Play](https://play.google.com/store/apps/details?id=com.ctuckersolutions.forkit)
+- [Google Play](https://play.google.com/store/apps/details?id=com.forkit.app)
 - [App Store](https://apps.apple.com/app/forkit-restaurant-picker/id6759990349)
 - [Web](https://forkit-web.vercel.app)
 - [Privacy Policy](https://CherrelleTucker.github.io/forkit/privacy.html)
